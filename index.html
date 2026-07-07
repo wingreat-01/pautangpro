@@ -396,6 +396,54 @@ a{color:inherit;}
 @media (max-width:360px){
   .summary-amount{ font-size:27px; }
 }
+
+/* ---------- Voice mic FAB (positioned within the phone frame, not the viewport) ---------- */
+.mic-fab{
+  position:absolute;
+  bottom:84px;
+  right:18px;
+  width:56px; height:56px;
+  border-radius:50%;
+  background:var(--peso);
+  color:#fff;
+  border:none;
+  font-size:22px;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 6px 18px rgba(31,107,76,0.4);
+  cursor:pointer;
+  z-index:25;
+}
+.mic-fab:active{ background:var(--peso-dark); }
+.mic-fab.listening{
+  background:var(--red);
+  animation: mic-pulse 1.3s infinite;
+}
+@keyframes mic-pulse{
+  0%{ box-shadow:0 0 0 0 rgba(168,60,52,0.5); }
+  70%{ box-shadow:0 0 0 16px rgba(168,60,52,0); }
+  100%{ box-shadow:0 0 0 0 rgba(168,60,52,0); }
+}
+
+.voice-caption{
+  position:absolute;
+  bottom:148px;
+  right:18px;
+  left:18px;
+  background:var(--ink);
+  color:var(--paper);
+  padding:10px 16px;
+  border-radius:14px;
+  font-size:13px;
+  text-align:center;
+  z-index:26;
+  display:none;
+  box-shadow:0 6px 20px rgba(0,0,0,0.3);
+}
+.voice-caption.show{ display:block; }
+.voice-caption .vc-label{
+  font-size:10px; letter-spacing:0.6px; text-transform:uppercase;
+  color:#7FBBA0; margin-bottom:2px; display:block;
+}
 </style>
 </head>
 <body>
@@ -553,6 +601,11 @@ a{color:inherit;}
     <button class="nav-btn" data-view="reports"><span class="ic">▤</span><span class="lb">Reports</span></button>
     <button class="nav-btn" data-view="settings"><span class="ic">⚙</span><span class="lb">Settings</span></button>
   </div>
+
+  <div class="voice-caption" id="voice-caption"></div>
+  <button class="mic-fab" id="mic-fab" style="display:none;" title="Voice log">
+    <span id="mic-icon">🎙</span>
+  </button>
 
   <!-- MODAL: New Borrower -->
   <div class="modal-overlay" id="modal-borrower">
@@ -1420,6 +1473,188 @@ function renderInstallBanner(){
 }
 
 /* =========================================================
+   VOICE LOGGING — on-device speech recognition + local parsing
+   No cloud AI calls. Uses the browser's built-in SpeechRecognition
+   (Web Speech API) for speech-to-text, then plain-JS parsing to
+   pull out an intent, an amount, and a borrower name.
+   ========================================================= */
+
+const PAYMENT_TRIGGERS = ['log payment','payment','pay ','nagbayad','magbayad','bayad'];
+const LOAN_TRIGGERS = ['new loan','new pautang','pautang','utang','nangutang','nagpautang','lend','loan'];
+
+const VOICE_STOPWORDS = [
+  'log','payment','payments','to','for','of','from','ni','kay','sa','si',
+  'peso','pesos','piso','php','a','an','the','loan','pautang','utang',
+  'new','add','record','please','pay','bayad','nagbayad','magbayad',
+  'nangutang','nagpautang','lend','lending'
+];
+
+function detectVoiceIntent(text){
+  const t = ' ' + text.toLowerCase() + ' ';
+  for(const trig of PAYMENT_TRIGGERS){ if(t.includes(trig)) return 'payment'; }
+  for(const trig of LOAN_TRIGGERS){ if(t.includes(trig)) return 'loan'; }
+  return null;
+}
+
+function extractVoiceAmount(text){
+  const lower = text.toLowerCase();
+  // "5k" / "5 k" style shorthand for thousands
+  const kMatch = lower.match(/(\d+(?:\.\d+)?)\s*k\b/);
+  if(kMatch) return { value: parseFloat(kMatch[1]) * 1000, raw: kMatch[0] };
+  // plain numbers, with optional comma separators
+  const numMatch = lower.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/);
+  if(numMatch) return { value: parseFloat(numMatch[0].replace(/,/g,'')), raw: numMatch[0] };
+  return null;
+}
+
+function extractVoiceName(text, amountRaw){
+  let t = ' ' + text.toLowerCase() + ' ';
+  if(amountRaw) t = t.split(amountRaw.toLowerCase()).join(' ');
+  VOICE_STOPWORDS.forEach(w=>{
+    t = t.replace(new RegExp('\\b'+w.trim()+'\\b','g'), ' ');
+  });
+  t = t.replace(/\s+/g,' ').trim();
+  return t;
+}
+
+function levenshtein(a,b){
+  const m = a.length, n = b.length;
+  const dp = Array.from({length:m+1}, (_,i)=>[i, ...Array(n).fill(0)]);
+  for(let j=0;j<=n;j++) dp[0][j]=j;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      dp[i][j] = a[i-1]===b[j-1]
+        ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function bestBorrowerMatch(spokenName, borrowers){
+  if(!spokenName || borrowers.length===0) return { borrower:null, score:0 };
+  let best = null, bestScore = -1;
+  for(const b of borrowers){
+    const bn = b.name.toLowerCase();
+    const dist = levenshtein(spokenName, bn);
+    const maxLen = Math.max(bn.length, spokenName.length, 1);
+    let score = 1 - (dist / maxLen);
+    // boost if one contains the other (handles partial names like just a first name)
+    if(bn.includes(spokenName) || spokenName.includes(bn)) score += 0.25;
+    if(score > bestScore){ bestScore = score; best = b; }
+  }
+  return { borrower: best, score: bestScore };
+}
+
+function titleCase(str){
+  return str.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1));
+}
+
+function showVoiceCaption(text){
+  const el = document.getElementById('voice-caption');
+  el.innerHTML = `<span class="vc-label">Listening</span>${text || '...'}`;
+  el.classList.add('show');
+}
+function hideVoiceCaption(){
+  document.getElementById('voice-caption').classList.remove('show');
+}
+
+async function handleVoiceTranscript(transcript){
+  const intent = detectVoiceIntent(transcript);
+  const amountInfo = extractVoiceAmount(transcript);
+
+  if(!intent){
+    showToast('Try: "log payment to [name] [amount] pesos"');
+    return;
+  }
+  if(!amountInfo){
+    showToast("Didn't catch an amount — please try again");
+    return;
+  }
+  const spokenName = extractVoiceName(transcript, amountInfo.raw);
+  const borrowers = await idbGetAll('borrowers');
+  const { borrower, score } = bestBorrowerMatch(spokenName, borrowers);
+
+  if(!borrower){
+    showToast('Add a borrower first, then try voice logging');
+    return;
+  }
+  if(score < 0.35){
+    showToast(`Couldn't confidently match "${titleCase(spokenName)}" — please pick manually`);
+  }
+
+  if(intent === 'payment'){
+    const loans = await idbGetByIndex('loans','borrowerId', borrower.id);
+    const openLoans = [];
+    for(const loan of loans){
+      const status = await loanStatus(loan);
+      if(status !== 'paid') openLoans.push(loan);
+    }
+    if(openLoans.length === 0){
+      showToast(`${borrower.name} has no active loan to pay`);
+      return;
+    }
+    openLoans.sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
+    await openPaymentModal(openLoans[0].id);
+    document.getElementById('p-amount').value = amountInfo.value.toFixed(2);
+    showToast(`Heard: pay ₱${peso(amountInfo.value)} to ${borrower.name} — confirm below`);
+  } else if(intent === 'loan'){
+    await openLoanModal(borrower.id);
+    document.getElementById('l-principal').value = amountInfo.value.toFixed(2);
+    showToast(`Heard: ₱${peso(amountInfo.value)} pautang for ${borrower.name} — confirm below`);
+  }
+}
+
+/* ---------- Speech recognition wiring ---------- */
+let recognition = null;
+let isListening = false;
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function setupVoiceRecognition(){
+  const micBtn = document.getElementById('mic-fab');
+  if(!SpeechRecognitionAPI){
+    micBtn.style.display = 'none';
+    return;
+  }
+  micBtn.style.display = 'flex';
+
+  recognition = new SpeechRecognitionAPI();
+  recognition.lang = 'en-PH';
+  recognition.interimResults = true;
+  recognition.continuous = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = ()=>{
+    isListening = true;
+    micBtn.classList.add('listening');
+    showVoiceCaption('');
+  };
+  recognition.onresult = (e)=>{
+    let transcript = '';
+    for(let i=0; i<e.results.length; i++){
+      transcript += e.results[i][0].transcript;
+    }
+    showVoiceCaption(transcript);
+    if(e.results[e.results.length-1].isFinal){
+      handleVoiceTranscript(transcript);
+    }
+  };
+  recognition.onerror = ()=>{
+    showToast("Didn't catch that — try again");
+  };
+  recognition.onend = ()=>{
+    isListening = false;
+    micBtn.classList.remove('listening');
+    setTimeout(hideVoiceCaption, 900);
+  };
+
+  micBtn.addEventListener('click', ()=>{
+    if(isListening){ recognition.stop(); return; }
+    try{ recognition.start(); }catch(err){ /* already started */ }
+  });
+}
+
+/* =========================================================
    INIT
    ========================================================= */
 async function refreshAll(){
@@ -1432,6 +1667,7 @@ async function refreshAll(){
   document.getElementById('today-label').textContent = new Date().toLocaleDateString('en-PH', { weekday:'short', month:'short', day:'numeric' });
   db = await openDB();
   await initPinScreen();
+  setupVoiceRecognition();
 
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
