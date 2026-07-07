@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1E2A2E">
+<title>Pautang Pro</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EFE9D8;
+  --paper-deep:#E4DCC6;
+  --card:#FFFDF7;
+  --ink:#1E2A2E;
+  --ink-soft:#4B5A57;
+  --peso:#1F6B4C;
+  --peso-dark:#164E38;
+  --peso-tint:#DCEAE1;
+  --red:#A83C34;
+  --red-tint:#F3E1DE;
+  --gold:#A9862F;
+  --line:#D8D0B8;
+  --shadow: 0 1px 2px rgba(30,42,46,0.06), 0 4px 14px rgba(30,42,46,0.06);
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:'IBM Plex Sans', sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior-y:none;
+}
+.mono{font-family:'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;}
+.serif{font-family:'Fraunces', serif;}
+button{font-family:inherit;}
+a{color:inherit;}
+
+/* App shell — phone frame feel */
+#app-root{
+  max-width:480px;
+  margin:0 auto;
+  min-height:100vh;
+  background:var(--paper);
+  position:relative;
+  display:flex;
+  flex-direction:column;
+}
+
+/* Ledger spine — signature element: a stitched binding rule down the left edge */
+#app-root::before{
+  content:"";
+  position:absolute;
+  top:0; bottom:0; left:0;
+  width:14px;
+  background:
+    repeating-linear-gradient(to bottom, var(--gold) 0 6px, transparent 6px 14px);
+  opacity:0.55;
+  pointer-events:none;
+}
+#app-root::after{
+  content:"";
+  position:absolute;
+  top:0; bottom:0; left:14px;
+  width:1px;
+  background:var(--line);
+  pointer-events:none;
+}
+.screen{ padding-left:26px; }
+
+/* ---------- PIN SCREEN ---------- */
+#pin-screen{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:32px 26px;
+  text-align:center;
+}
+.pin-book{
+  background:var(--ink);
+  color:var(--paper);
+  border-radius:10px;
+  padding:28px 24px 24px;
+  width:100%;
+  box-shadow: 0 10px 30px rgba(30,42,46,0.35);
+}
+.pin-book .brand{
+  font-family:'Fraunces', serif;
+  font-size:28px;
+  font-weight:600;
+  letter-spacing:0.2px;
+  margin:0 0 2px;
+}
+.pin-book .brand .accent{ color:#7FBBA0; }
+.pin-book .tagline{
+  font-size:12.5px;
+  color:#B9C6C3;
+  margin:0 0 26px;
+  letter-spacing:0.3px;
+}
+.pin-dots{
+  display:flex;
+  gap:14px;
+  justify-content:center;
+  margin:18px 0 26px;
+}
+.pin-dot{
+  width:14px;height:14px;border-radius:50%;
+  border:1.5px solid #7FBBA0;
+  background:transparent;
+  transition: background .15s ease;
+}
+.pin-dot.filled{ background:#7FBBA0; }
+.pin-pad{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:10px;
+}
+.pin-key{
+  padding:16px 0;
+  border-radius:8px;
+  border:1px solid #33443F;
+  background:#26343A;
+  color:var(--paper);
+  font-size:18px;
+  font-family:'IBM Plex Mono', monospace;
+  cursor:pointer;
+}
+.pin-key:active{ background:#31423E; }
+.pin-key.wide{ grid-column:span 1; font-size:13px; color:#9FB0AC; }
+#pin-error{
+  color:#E39A8F; font-size:12.5px; min-height:18px; margin-top:10px;
+}
+#pin-mode-label{ font-size:12px; color:#9FB0AC; margin-top:16px; }
+
+/* ---------- TOP BAR ---------- */
+.topbar{
+  padding:20px 20px 16px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  border-bottom:1px solid var(--line);
+}
+.topbar .brand-mark{
+  font-family:'Fraunces', serif;
+  font-weight:600;
+  font-size:20px;
+}
+.topbar .brand-mark .accent{ color:var(--peso); }
+.topbar .today{
+  font-size:11.5px;
+  color:var(--ink-soft);
+  text-align:right;
+}
+
+/* ---------- VIEWS ---------- */
+.view{ display:none; flex:1; padding-bottom:88px; }
+.view.active{ display:block; }
+
+.section-label{
+  font-size:11px;
+  letter-spacing:1.2px;
+  text-transform:uppercase;
+  color:var(--gold);
+  font-weight:600;
+  margin:22px 20px 8px;
+}
+
+/* Dashboard summary card */
+.summary-card{
+  margin:16px 20px 6px;
+  background:var(--ink);
+  color:var(--paper);
+  border-radius:12px;
+  padding:22px 20px;
+  box-shadow:var(--shadow);
+}
+.summary-label{ font-size:12px; color:#AEBDB9; margin-bottom:4px; letter-spacing:0.3px; }
+.summary-amount{ font-size:32px; font-weight:600; font-family:'IBM Plex Mono', monospace; }
+.summary-amount .peso-sign{ color:#7FBBA0; margin-right:2px; }
+.summary-row{
+  display:flex;
+  gap:12px;
+  margin-top:18px;
+}
+.summary-chip{
+  flex:1;
+  background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:8px;
+  padding:10px 12px;
+}
+.summary-chip .n{ font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:600; }
+.summary-chip .l{ font-size:10.5px; color:#AEBDB9; margin-top:2px; }
+.summary-chip.warn .n{ color:#E39A8F; }
+
+.quick-actions{
+  display:flex;
+  gap:10px;
+  margin:16px 20px;
+}
+.qa-btn{
+  flex:1;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:14px 8px;
+  text-align:center;
+  cursor:pointer;
+  box-shadow:var(--shadow);
+}
+.qa-btn .ic{ font-size:20px; display:block; margin-bottom:4px; }
+.qa-btn .tx{ font-size:11.5px; font-weight:600; }
+
+/* Ledger list rows — ruled like paper */
+.ledger-list{ margin:0 20px; }
+.ledger-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 4px;
+  border-bottom:1px dashed var(--line);
+  cursor:pointer;
+}
+.ledger-row:last-child{ border-bottom:none; }
+.lr-main .name{ font-weight:600; font-size:14.5px; }
+.lr-main .meta{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+.lr-right{ text-align:right; }
+.lr-right .amt{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14.5px; }
+.lr-right .tag{
+  display:inline-block;
+  margin-top:4px;
+  font-size:9.5px;
+  letter-spacing:0.4px;
+  text-transform:uppercase;
+  padding:2px 7px;
+  border-radius:20px;
+  font-weight:600;
+}
+.tag-active{ background:var(--peso-tint); color:var(--peso-dark); }
+.tag-overdue{ background:var(--red-tint); color:var(--red); }
+.tag-paid{ background:#E7E3D3; color:var(--ink-soft); }
+
+.empty-state{
+  margin:30px 20px;
+  text-align:center;
+  color:var(--ink-soft);
+  font-size:13px;
+  padding:30px 20px;
+  border:1px dashed var(--line);
+  border-radius:10px;
+}
+.empty-state .big{ font-size:28px; display:block; margin-bottom:8px; }
+
+/* Search */
+.search-wrap{ margin:16px 20px; }
+.search-input{
+  width:100%;
+  padding:11px 14px;
+  border-radius:8px;
+  border:1px solid var(--line);
+  background:var(--card);
+  font-size:14px;
+  font-family:inherit;
+}
+
+/* Borrower detail header */
+.detail-header{
+  margin:16px 20px;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:18px;
+  box-shadow:var(--shadow);
+}
+.detail-header .name{ font-family:'Fraunces',serif; font-size:20px; font-weight:600; }
+.detail-header .contact{ font-size:12.5px; color:var(--ink-soft); margin-top:2px; }
+.detail-header .balance-row{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-top:14px; padding-top:14px; border-top:1px solid var(--line);
+}
+.detail-header .balance-label{ font-size:11.5px; color:var(--ink-soft); }
+.detail-header .balance-amt{ font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600; color:var(--peso-dark); }
+
+.back-link{
+  display:inline-flex; align-items:center; gap:4px;
+  margin:16px 20px 0; font-size:13px; color:var(--ink-soft); cursor:pointer;
+}
+
+/* Bottom nav */
+.bottomnav{
+  position:fixed;
+  bottom:0; left:50%; transform:translateX(-50%);
+  width:100%; max-width:480px;
+  background:var(--card);
+  border-top:1px solid var(--line);
+  display:flex;
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+  z-index:20;
+}
+.nav-btn{
+  flex:1;
+  background:none; border:none;
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:6px 0;
+  color:var(--ink-soft);
+  cursor:pointer;
+}
+.nav-btn .ic{ font-size:19px; }
+.nav-btn .lb{ font-size:10px; font-weight:600; letter-spacing:0.2px; }
+.nav-btn.active{ color:var(--peso); }
+
+/* Modals */
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(30,42,46,0.55);
+  display:none; align-items:flex-end; justify-content:center; z-index:50;
+}
+.modal-overlay.active{ display:flex; }
+.modal-sheet{
+  background:var(--paper);
+  width:100%; max-width:480px;
+  max-height:88vh;
+  overflow-y:auto;
+  border-radius:16px 16px 0 0;
+  padding:20px 20px calc(20px + env(safe-area-inset-bottom));
+  box-shadow:0 -8px 30px rgba(0,0,0,0.25);
+}
+.modal-handle{ width:36px; height:4px; background:var(--line); border-radius:4px; margin:0 auto 16px; }
+.modal-title{ font-family:'Fraunces',serif; font-size:19px; font-weight:600; margin-bottom:16px; }
+
+.field{ margin-bottom:14px; }
+.field label{ display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px; }
+.field input, .field select{
+  width:100%; padding:11px 12px; border-radius:8px;
+  border:1px solid var(--line); background:var(--card); font-size:14.5px; font-family:inherit;
+}
+.field-row{ display:flex; gap:10px; }
+.field-row .field{ flex:1; }
+.radio-group{ display:flex; gap:8px; }
+.radio-chip{
+  flex:1; text-align:center; padding:9px 4px; border-radius:8px;
+  border:1px solid var(--line); background:var(--card); font-size:12.5px; cursor:pointer;
+}
+.radio-chip.selected{ background:var(--peso); color:#fff; border-color:var(--peso); }
+
+.btn-primary{
+  width:100%; padding:14px; border:none; border-radius:8px;
+  background:var(--peso); color:#fff; font-size:14.5px; font-weight:600;
+  cursor:pointer; margin-top:6px;
+}
+.btn-primary:active{ background:var(--peso-dark); }
+.btn-secondary{
+  width:100%; padding:12px; border:1px solid var(--line); border-radius:8px;
+  background:transparent; color:var(--ink); font-size:13.5px; font-weight:600;
+  cursor:pointer; margin-top:8px;
+}
+.btn-danger{ color:var(--red); }
+
+.toast{
+  position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
+  background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:20px;
+  font-size:13px; z-index:60; opacity:0; transition:opacity .25s ease; pointer-events:none;
+}
+.toast.show{ opacity:1; }
+
+.install-banner{
+  margin:14px 20px; padding:14px; border-radius:10px;
+  background:var(--peso-tint); border:1px solid #BFDDCB;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.install-banner .txt{ font-size:12.5px; color:var(--peso-dark); }
+.install-banner button{
+  background:var(--peso); color:#fff; border:none; border-radius:6px;
+  padding:8px 12px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;
+}
+
+.settings-item{
+  margin:0 20px; background:var(--card); border:1px solid var(--line);
+  border-radius:10px; padding:14px 16px; margin-bottom:10px;
+  display:flex; align-items:center; justify-content:space-between; cursor:pointer;
+}
+.settings-item .l{ font-size:14px; font-weight:500; }
+.settings-item .d{ font-size:11.5px; color:var(--ink-soft); margin-top:2px; }
+.settings-item .chev{ color:var(--ink-soft); }
+
+.hidden-file{ display:none; }
+
+@media (max-width:360px){
+  .summary-amount{ font-size:27px; }
+}
+</style>
+</head>
+<body>
+
+<div id="app-root">
+
+  <!-- PIN SCREEN -->
+  <div id="pin-screen" class="screen">
+    <div class="pin-book">
+      <p class="brand serif">Pautang <span class="accent">Pro</span></p>
+      <p class="tagline">ISANG LIBRO PARA SA IYONG PAUTANG</p>
+      <p id="pin-instruction" style="font-size:13px;color:#D7DEDC;margin:0;">Set a 4-digit PIN to protect your ledger</p>
+      <div class="pin-dots" id="pin-dots">
+        <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+      </div>
+      <div class="pin-pad" id="pin-pad">
+        <div class="pin-key" data-k="1">1</div>
+        <div class="pin-key" data-k="2">2</div>
+        <div class="pin-key" data-k="3">3</div>
+        <div class="pin-key" data-k="4">4</div>
+        <div class="pin-key" data-k="5">5</div>
+        <div class="pin-key" data-k="6">6</div>
+        <div class="pin-key" data-k="7">7</div>
+        <div class="pin-key" data-k="8">8</div>
+        <div class="pin-key" data-k="9">9</div>
+        <div class="pin-key wide" data-k="clear">CLEAR</div>
+        <div class="pin-key" data-k="0">0</div>
+        <div class="pin-key wide" data-k="back">⌫</div>
+      </div>
+      <div id="pin-error"></div>
+      <div id="pin-mode-label"></div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app" style="display:none; flex:1; display:flex; flex-direction:column;">
+
+    <div class="topbar screen">
+      <div class="brand-mark">Pautang <span class="accent">Pro</span></div>
+      <div class="today" id="today-label"></div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div class="view active" id="view-dashboard">
+      <div id="install-banner-slot"></div>
+      <div class="screen">
+        <div class="summary-card">
+          <div class="summary-label">Total Out — Pera sa Labas</div>
+          <div class="summary-amount"><span class="peso-sign">₱</span><span id="total-out" class="mono">0.00</span></div>
+          <div class="summary-row">
+            <div class="summary-chip">
+              <div class="n" id="due-today-count">0</div>
+              <div class="l">DUE TODAY</div>
+            </div>
+            <div class="summary-chip warn">
+              <div class="n" id="overdue-count">0</div>
+              <div class="l">OVERDUE</div>
+            </div>
+            <div class="summary-chip">
+              <div class="n" id="borrower-count">0</div>
+              <div class="l">BORROWERS</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="quick-actions screen">
+        <div class="qa-btn" id="qa-new-borrower"><span class="ic">👤</span><span class="tx">New Borrower</span></div>
+        <div class="qa-btn" id="qa-new-loan"><span class="ic">✎</span><span class="tx">New Pautang</span></div>
+        <div class="qa-btn" id="qa-log-payment"><span class="ic">₱</span><span class="tx">Log Payment</span></div>
+      </div>
+
+      <div class="section-label screen">Needs Attention</div>
+      <div class="ledger-list screen" id="attention-list"></div>
+    </div>
+
+    <!-- BORROWERS -->
+    <div class="view" id="view-borrowers">
+      <div class="search-wrap screen">
+        <input type="text" class="search-input" id="borrower-search" placeholder="Search borrower name...">
+      </div>
+      <div class="ledger-list screen" id="borrower-list"></div>
+    </div>
+
+    <!-- BORROWER DETAIL -->
+    <div class="view" id="view-borrower-detail">
+      <div class="back-link screen" id="back-to-borrowers">← Borrowers</div>
+      <div class="detail-header screen" id="borrower-detail-header"></div>
+      <div class="quick-actions screen">
+        <div class="qa-btn" id="detail-new-loan"><span class="ic">✎</span><span class="tx">New Pautang</span></div>
+        <div class="qa-btn" id="detail-edit-borrower"><span class="ic">⚙</span><span class="tx">Edit Info</span></div>
+      </div>
+      <div class="section-label screen">Loan History</div>
+      <div class="ledger-list screen" id="borrower-loans-list"></div>
+    </div>
+
+    <!-- LOAN DETAIL -->
+    <div class="view" id="view-loan-detail">
+      <div class="back-link screen" id="back-to-borrower-detail">← Back</div>
+      <div class="detail-header screen" id="loan-detail-header"></div>
+      <div class="quick-actions screen">
+        <div class="qa-btn" id="loan-log-payment"><span class="ic">₱</span><span class="tx">Log Payment</span></div>
+      </div>
+      <div class="section-label screen">Payment History</div>
+      <div class="ledger-list screen" id="loan-payments-list"></div>
+    </div>
+
+    <!-- REPORTS -->
+    <div class="view" id="view-reports">
+      <div class="section-label screen" style="margin-top:18px;">This Month</div>
+      <div class="screen" style="margin:0 20px;">
+        <div class="summary-card" style="background:var(--card); color:var(--ink); border:1px solid var(--line); box-shadow:var(--shadow);">
+          <div class="summary-label" style="color:var(--ink-soft);">Collected This Month</div>
+          <div class="summary-amount" style="color:var(--peso-dark);"><span class="peso-sign" style="color:var(--peso);">₱</span><span id="month-collected" class="mono">0.00</span></div>
+        </div>
+      </div>
+      <div class="section-label screen">Overdue Loans</div>
+      <div class="ledger-list screen" id="report-overdue-list"></div>
+      <div class="section-label screen">Top Borrowers by Balance</div>
+      <div class="ledger-list screen" id="report-top-list"></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="view" id="view-settings">
+      <div class="section-label screen" style="margin-top:18px;">Security</div>
+      <div class="screen">
+        <div class="settings-item" id="settings-change-pin">
+          <div><div class="l">Change PIN</div><div class="d">Update your 4-digit lock code</div></div>
+          <div class="chev">›</div>
+        </div>
+      </div>
+      <div class="section-label screen">Data</div>
+      <div class="screen">
+        <div class="settings-item" id="settings-export">
+          <div><div class="l">Backup to File</div><div class="d">Save all data as a JSON file</div></div>
+          <div class="chev">›</div>
+        </div>
+        <div class="settings-item" id="settings-import">
+          <div><div class="l">Restore from Backup</div><div class="d">Load data from a JSON file</div></div>
+          <div class="chev">›</div>
+        </div>
+        <input type="file" id="import-file-input" class="hidden-file" accept="application/json">
+      </div>
+      <div class="section-label screen">About</div>
+      <div class="screen" style="margin:0 20px; font-size:12px; color:var(--ink-soft); line-height:1.6;">
+        Pautang Pro v1.0 — your ledger stays on this device only. No account, no internet required.
+      </div>
+    </div>
+
+  </div>
+
+  <div class="bottomnav" id="bottomnav" style="display:none;">
+    <button class="nav-btn active" data-view="dashboard"><span class="ic">⌂</span><span class="lb">Home</span></button>
+    <button class="nav-btn" data-view="borrowers"><span class="ic">☰</span><span class="lb">Borrowers</span></button>
+    <button class="nav-btn" data-view="reports"><span class="ic">▤</span><span class="lb">Reports</span></button>
+    <button class="nav-btn" data-view="settings"><span class="ic">⚙</span><span class="lb">Settings</span></button>
+  </div>
+
+  <!-- MODAL: New Borrower -->
+  <div class="modal-overlay" id="modal-borrower">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title" id="borrower-modal-title">New Borrower</div>
+      <div class="field"><label>Full Name</label><input type="text" id="b-name" placeholder="Juan Dela Cruz"></div>
+      <div class="field"><label>Contact Number</label><input type="text" id="b-contact" placeholder="09XX XXX XXXX"></div>
+      <div class="field"><label>Address (optional)</label><input type="text" id="b-address" placeholder="Barangay, City"></div>
+      <button class="btn-primary" id="save-borrower">Save Borrower</button>
+      <button class="btn-secondary" id="cancel-borrower">Cancel</button>
+    </div>
+  </div>
+
+  <!-- MODAL: New Loan -->
+  <div class="modal-overlay" id="modal-loan">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">New Pautang</div>
+      <div class="field" id="loan-borrower-field">
+        <label>Borrower</label>
+        <select id="l-borrower"></select>
+      </div>
+      <div class="field"><label>Principal Amount (₱)</label><input type="number" inputmode="decimal" id="l-principal" placeholder="0.00"></div>
+      <div class="field">
+        <label>Interest Type</label>
+        <div class="radio-group" id="l-interest-type">
+          <div class="radio-chip selected" data-v="none">None</div>
+          <div class="radio-chip" data-v="flat">Flat %</div>
+          <div class="radio-chip" data-v="monthly">% / month</div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Interest Rate (%)</label><input type="number" inputmode="decimal" id="l-rate" placeholder="0" value="0"></div>
+        <div class="field"><label>Term (months)</label><input type="number" inputmode="numeric" id="l-term" placeholder="1" value="1"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Date Given</label><input type="date" id="l-date-given"></div>
+        <div class="field"><label>Due Date</label><input type="date" id="l-due-date"></div>
+      </div>
+      <div class="field"><label>Notes (optional)</label><input type="text" id="l-notes" placeholder="e.g. for tricycle repair"></div>
+      <button class="btn-primary" id="save-loan">Save Pautang</button>
+      <button class="btn-secondary" id="cancel-loan">Cancel</button>
+    </div>
+  </div>
+
+  <!-- MODAL: Log Payment -->
+  <div class="modal-overlay" id="modal-payment">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Log Payment</div>
+      <div class="field" id="payment-loan-field">
+        <label>Loan</label>
+        <select id="p-loan"></select>
+      </div>
+      <div class="field"><label>Amount Paid (₱)</label><input type="number" inputmode="decimal" id="p-amount" placeholder="0.00"></div>
+      <div class="field"><label>Date Paid</label><input type="date" id="p-date"></div>
+      <div class="field">
+        <label>Method</label>
+        <div class="radio-group" id="p-method">
+          <div class="radio-chip selected" data-v="cash">Cash</div>
+          <div class="radio-chip" data-v="gcash">GCash</div>
+          <div class="radio-chip" data-v="maya">Maya</div>
+          <div class="radio-chip" data-v="other">Other</div>
+        </div>
+      </div>
+      <button class="btn-primary" id="save-payment">Save Payment</button>
+      <button class="btn-secondary" id="cancel-payment">Cancel</button>
+    </div>
+  </div>
+
+  <!-- MODAL: Change PIN -->
+  <div class="modal-overlay" id="modal-pin-change">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Change PIN</div>
+      <div class="field"><label>Current PIN</label><input type="password" inputmode="numeric" maxlength="4" id="pin-current"></div>
+      <div class="field"><label>New PIN (4 digits)</label><input type="password" inputmode="numeric" maxlength="4" id="pin-new"></div>
+      <button class="btn-primary" id="save-pin-change">Update PIN</button>
+      <button class="btn-secondary" id="cancel-pin-change">Cancel</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+</div>
+
+<script>
+/* =========================================================
+   PAUTANG PRO — local-first ledger app
+   Storage: IndexedDB (borrowers, loans, payments, settings)
+   ========================================================= */
+
+const DB_NAME = 'PautangProDB';
+const DB_VERSION = 1;
+let db;
+
+function openDB(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e)=>{
+      const _db = e.target.result;
+      if(!_db.objectStoreNames.contains('borrowers')){
+        const s = _db.createObjectStore('borrowers', { keyPath:'id', autoIncrement:true });
+        s.createIndex('name','name',{unique:false});
+      }
+      if(!_db.objectStoreNames.contains('loans')){
+        const s = _db.createObjectStore('loans', { keyPath:'id', autoIncrement:true });
+        s.createIndex('borrowerId','borrowerId',{unique:false});
+      }
+      if(!_db.objectStoreNames.contains('payments')){
+        const s = _db.createObjectStore('payments', { keyPath:'id', autoIncrement:true });
+        s.createIndex('loanId','loanId',{unique:false});
+      }
+      if(!_db.objectStoreNames.contains('settings')){
+        _db.createObjectStore('settings', { keyPath:'key' });
+      }
+    };
+    req.onsuccess = (e)=>{ resolve(e.target.result); };
+    req.onerror = (e)=>{ reject(e.target.error); };
+  });
+}
+
+function txStore(storeName, mode='readonly'){
+  const tx = db.transaction(storeName, mode);
+  return tx.objectStore(storeName);
+}
+function idbAdd(storeName, value){
+  return new Promise((resolve,reject)=>{
+    const req = txStore(storeName,'readwrite').add(value);
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+function idbPut(storeName, value){
+  return new Promise((resolve,reject)=>{
+    const req = txStore(storeName,'readwrite').put(value);
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+function idbGet(storeName, key){
+  return new Promise((resolve,reject)=>{
+    const req = txStore(storeName).get(key);
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+function idbGetAll(storeName){
+  return new Promise((resolve,reject)=>{
+    const req = txStore(storeName).getAll();
+    req.onsuccess = ()=>resolve(req.result || []);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+function idbDelete(storeName, key){
+  return new Promise((resolve,reject)=>{
+    const req = txStore(storeName,'readwrite').delete(key);
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+function idbGetByIndex(storeName, indexName, value){
+  return new Promise((resolve,reject)=>{
+    const req = txStore(storeName).index(indexName).getAll(value);
+    req.onsuccess = ()=>resolve(req.result || []);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+function idbClear(storeName){
+  return new Promise((resolve,reject)=>{
+    const req = txStore(storeName,'readwrite').clear();
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+
+/* ---------- Helpers ---------- */
+function peso(n){
+  const v = Number(n)||0;
+  return v.toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+function todayISO(){
+  const d = new Date();
+  return d.toISOString().slice(0,10);
+}
+function fmtDate(iso){
+  if(!iso) return '—';
+  const d = new Date(iso+'T00:00:00');
+  return d.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' });
+}
+function daysBetween(a,b){
+  return Math.round((new Date(b) - new Date(a)) / 86400000);
+}
+function simpleHash(str){
+  let h = 0;
+  for(let i=0;i<str.length;i++){ h = (h*31 + str.charCodeAt(i)) >>> 0; }
+  return String(h);
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+/* ---------- Loan math ---------- */
+function loanTotalPayable(loan){
+  const p = Number(loan.principal)||0;
+  const rate = Number(loan.interestRate)||0;
+  if(loan.interestType === 'none') return p;
+  if(loan.interestType === 'flat') return p + (p * rate/100);
+  if(loan.interestType === 'monthly') return p + (p * (rate/100) * (Number(loan.termMonths)||1));
+  return p;
+}
+async function loanBalance(loan){
+  const payments = await idbGetByIndex('payments','loanId', loan.id);
+  const paid = payments.reduce((s,p)=>s + (Number(p.amount)||0), 0);
+  const total = loanTotalPayable(loan);
+  return { total, paid, balance: Math.max(0, total - paid) };
+}
+async function loanStatus(loan){
+  const { balance } = await loanBalance(loan);
+  if(balance <= 0.004) return 'paid';
+  if(loan.dueDate && loan.dueDate < todayISO()) return 'overdue';
+  return 'active';
+}
+
+/* ---------- PIN handling ---------- */
+let pinBuffer = '';
+let pinMode = 'unlock'; // 'setup' | 'confirm' | 'unlock' | 'change-verify' | 'change-new'
+let pendingNewPin = '';
+let changePinContext = false;
+
+async function initPinScreen(){
+  const settings = await idbGet('settings','pin');
+  const instr = document.getElementById('pin-instruction');
+  const modeLabel = document.getElementById('pin-mode-label');
+  if(!settings){
+    pinMode = 'setup';
+    instr.textContent = 'Set a 4-digit PIN to protect your ledger';
+    modeLabel.textContent = '';
+  } else {
+    pinMode = 'unlock';
+    instr.textContent = 'Enter your PIN';
+    modeLabel.textContent = '';
+  }
+  renderPinDots();
+}
+
+function renderPinDots(){
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach((d,i)=>{
+    d.classList.toggle('filled', i < pinBuffer.length);
+  });
+}
+
+async function handlePinKey(k){
+  const errEl = document.getElementById('pin-error');
+  if(k === 'clear'){ pinBuffer=''; errEl.textContent=''; renderPinDots(); return; }
+  if(k === 'back'){ pinBuffer = pinBuffer.slice(0,-1); renderPinDots(); return; }
+  if(pinBuffer.length >= 4) return;
+  pinBuffer += k;
+  renderPinDots();
+  if(pinBuffer.length === 4){
+    await evaluatePinEntry();
+  }
+}
+
+async function evaluatePinEntry(){
+  const errEl = document.getElementById('pin-error');
+  const instr = document.getElementById('pin-instruction');
+  const entered = pinBuffer;
+
+  if(pinMode === 'setup'){
+    pendingNewPin = entered;
+    pinMode = 'confirm';
+    instr.textContent = 'Confirm your PIN';
+    pinBuffer = '';
+    renderPinDots();
+    return;
+  }
+  if(pinMode === 'confirm'){
+    if(entered === pendingNewPin){
+      await idbPut('settings', { key:'pin', value: simpleHash(entered) });
+      showToast('PIN set');
+      enterApp();
+    } else {
+      errEl.textContent = "PINs didn't match. Try again.";
+      pinMode = 'setup';
+      instr.textContent = 'Set a 4-digit PIN to protect your ledger';
+      pinBuffer = '';
+      renderPinDots();
+    }
+    return;
+  }
+  if(pinMode === 'unlock'){
+    const settings = await idbGet('settings','pin');
+    if(settings && settings.value === simpleHash(entered)){
+      errEl.textContent='';
+      enterApp();
+    } else {
+      errEl.textContent = 'Incorrect PIN. Try again.';
+      pinBuffer='';
+      renderPinDots();
+    }
+    return;
+  }
+  if(pinMode === 'change-verify'){
+    const settings = await idbGet('settings','pin');
+    if(settings && settings.value === simpleHash(entered)){
+      pinMode = 'change-new';
+      instr.textContent = 'Enter new 4-digit PIN';
+      errEl.textContent='';
+      pinBuffer='';
+      renderPinDots();
+    } else {
+      errEl.textContent = 'Incorrect current PIN.';
+      pinBuffer='';
+      renderPinDots();
+    }
+    return;
+  }
+  if(pinMode === 'change-new'){
+    await idbPut('settings', { key:'pin', value: simpleHash(entered) });
+    showToast('PIN updated');
+    pinBuffer='';
+    goToView('settings');
+    document.getElementById('pin-screen').style.display='none';
+    document.getElementById('app').style.display='flex';
+    document.getElementById('bottomnav').style.display='flex';
+  }
+}
+
+function enterApp(){
+  document.getElementById('pin-screen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('bottomnav').style.display='flex';
+  pinBuffer='';
+  refreshAll();
+}
+
+document.getElementById('pin-pad').addEventListener('click', (e)=>{
+  const key = e.target.closest('.pin-key');
+  if(!key) return;
+  handlePinKey(key.dataset.k);
+});
+
+/* ---------- Navigation ---------- */
+function goToView(name){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.view === name);
+  });
+  if(['dashboard','borrowers','reports','settings'].includes(name)){
+    document.getElementById('bottomnav').style.display='flex';
+  }
+}
+document.querySelectorAll('.nav-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    goToView(btn.dataset.view);
+    if(btn.dataset.view==='borrowers') renderBorrowerList();
+    if(btn.dataset.view==='dashboard') renderDashboard();
+    if(btn.dataset.view==='reports') renderReports();
+  });
+});
+
+/* ---------- Modal helpers ---------- */
+function openModal(id){ document.getElementById(id).classList.add('active'); }
+function closeModal(id){ document.getElementById(id).classList.remove('active'); }
+document.querySelectorAll('.modal-overlay').forEach(ov=>{
+  ov.addEventListener('click', (e)=>{ if(e.target === ov) ov.classList.remove('active'); });
+});
+
+/* Radio chip groups */
+function wireRadioGroup(containerId){
+  const el = document.getElementById(containerId);
+  el.addEventListener('click', (e)=>{
+    const chip = e.target.closest('.radio-chip');
+    if(!chip) return;
+    [...el.children].forEach(c=>c.classList.remove('selected'));
+    chip.classList.add('selected');
+  });
+}
+wireRadioGroup('l-interest-type');
+wireRadioGroup('p-method');
+function getSelectedChip(containerId){
+  return document.querySelector('#'+containerId+' .radio-chip.selected').dataset.v;
+}
+
+/* =========================================================
+   DASHBOARD
+   ========================================================= */
+async function renderDashboard(){
+  const borrowers = await idbGetAll('borrowers');
+  const loans = await idbGetAll('loans');
+  document.getElementById('borrower-count').textContent = borrowers.length;
+
+  let totalOut = 0, dueToday = 0, overdue = 0;
+  const attention = [];
+
+  for(const loan of loans){
+    const { balance } = await loanBalance(loan);
+    const status = await loanStatus(loan);
+    if(status !== 'paid'){
+      totalOut += balance;
+      if(loan.dueDate === todayISO()) dueToday++;
+      if(status === 'overdue'){ overdue++; attention.push({loan, balance, status}); }
+      else if(loan.dueDate === todayISO()){ attention.push({loan, balance, status}); }
+    }
+  }
+  document.getElementById('total-out').textContent = peso(totalOut);
+  document.getElementById('due-today-count').textContent = dueToday;
+  document.getElementById('overdue-count').textContent = overdue;
+
+  attention.sort((a,b)=> (a.loan.dueDate||'').localeCompare(b.loan.dueDate||''));
+  const listEl = document.getElementById('attention-list');
+  listEl.innerHTML = '';
+  if(attention.length === 0){
+    listEl.innerHTML = `<div class="empty-state"><span class="big">✓</span>Nothing overdue or due today. Malinis ang ledger mo!</div>`;
+  } else {
+    for(const a of attention.slice(0,8)){
+      const borrower = borrowers.find(b=>b.id === a.loan.borrowerId);
+      listEl.appendChild(buildLoanRow(borrower, a.loan, a.balance, a.status));
+    }
+  }
+}
+
+function buildLoanRow(borrower, loan, balance, status){
+  const row = document.createElement('div');
+  row.className = 'ledger-row';
+  const tagClass = status==='overdue' ? 'tag-overdue' : (status==='paid' ? 'tag-paid' : 'tag-active');
+  const tagLabel = status==='overdue' ? 'Overdue' : (status==='paid' ? 'Paid' : 'Active');
+  row.innerHTML = `
+    <div class="lr-main">
+      <div class="name">${borrower ? borrower.name : 'Unknown'}</div>
+      <div class="meta">Due ${fmtDate(loan.dueDate)}</div>
+    </div>
+    <div class="lr-right">
+      <div class="amt mono">₱${peso(balance)}</div>
+      <div class="tag ${tagClass}">${tagLabel}</div>
+    </div>
+  `;
+  row.addEventListener('click', ()=> openLoanDetail(loan.id));
+  return row;
+}
+
+/* =========================================================
+   BORROWERS LIST
+   ========================================================= */
+let currentBorrowerFilter = '';
+async function renderBorrowerList(){
+  const borrowers = await idbGetAll('borrowers');
+  borrowers.sort((a,b)=>a.name.localeCompare(b.name));
+  const filtered = currentBorrowerFilter
+    ? borrowers.filter(b=>b.name.toLowerCase().includes(currentBorrowerFilter.toLowerCase()))
+    : borrowers;
+
+  const listEl = document.getElementById('borrower-list');
+  listEl.innerHTML='';
+  if(filtered.length === 0){
+    listEl.innerHTML = `<div class="empty-state"><span class="big">👤</span>No borrowers yet. Tap "New Borrower" on Home to add one.</div>`;
+    return;
+  }
+  for(const b of filtered){
+    const loans = await idbGetByIndex('loans','borrowerId', b.id);
+    let balanceSum = 0;
+    for(const loan of loans){
+      const { balance } = await loanBalance(loan);
+      balanceSum += balance;
+    }
+    const row = document.createElement('div');
+    row.className = 'ledger-row';
+    row.innerHTML = `
+      <div class="lr-main">
+        <div class="name">${b.name}</div>
+        <div class="meta">${b.contact || 'No contact'}</div>
+      </div>
+      <div class="lr-right">
+        <div class="amt mono">₱${peso(balanceSum)}</div>
+        <div class="tag ${balanceSum>0?'tag-active':'tag-paid'}">${balanceSum>0?'Owing':'Clear'}</div>
+      </div>
+    `;
+    row.addEventListener('click', ()=> openBorrowerDetail(b.id));
+    listEl.appendChild(row);
+  }
+}
+document.getElementById('borrower-search').addEventListener('input', (e)=>{
+  currentBorrowerFilter = e.target.value;
+  renderBorrowerList();
+});
+
+/* =========================================================
+   BORROWER DETAIL
+   ========================================================= */
+let activeBorrowerId = null;
+async function openBorrowerDetail(id){
+  activeBorrowerId = id;
+  const b = await idbGet('borrowers', id);
+  const loans = await idbGetByIndex('loans','borrowerId', id);
+  let totalBalance = 0;
+  for(const loan of loans){
+    const { balance } = await loanBalance(loan);
+    totalBalance += balance;
+  }
+  document.getElementById('borrower-detail-header').innerHTML = `
+    <div class="name serif">${b.name}</div>
+    <div class="contact">${b.contact || 'No contact number'}${b.address ? ' · ' + b.address : ''}</div>
+    <div class="balance-row">
+      <div class="balance-label">Current Balance</div>
+      <div class="balance-amt mono">₱${peso(totalBalance)}</div>
+    </div>
+  `;
+  const listEl = document.getElementById('borrower-loans-list');
+  listEl.innerHTML='';
+  if(loans.length === 0){
+    listEl.innerHTML = `<div class="empty-state"><span class="big">✎</span>No pautang recorded yet for this borrower.</div>`;
+  } else {
+    loans.sort((a,b2)=> (b2.dateGiven||'').localeCompare(a.dateGiven||''));
+    for(const loan of loans){
+      const { balance } = await loanBalance(loan);
+      const status = await loanStatus(loan);
+      listEl.appendChild(buildLoanRow(b, loan, balance, status));
+    }
+  }
+  goToView('borrower-detail');
+  document.getElementById('bottomnav').style.display='none';
+}
+document.getElementById('back-to-borrowers').addEventListener('click', ()=>{
+  goToView('borrowers'); renderBorrowerList();
+});
+document.getElementById('detail-new-loan').addEventListener('click', ()=> openLoanModal(activeBorrowerId));
+document.getElementById('detail-edit-borrower').addEventListener('click', async ()=>{
+  const b = await idbGet('borrowers', activeBorrowerId);
+  document.getElementById('borrower-modal-title').textContent = 'Edit Borrower';
+  document.getElementById('b-name').value = b.name;
+  document.getElementById('b-contact').value = b.contact || '';
+  document.getElementById('b-address').value = b.address || '';
+  document.getElementById('save-borrower').dataset.editId = b.id;
+  openModal('modal-borrower');
+});
+
+/* =========================================================
+   LOAN DETAIL
+   ========================================================= */
+let activeLoanId = null;
+async function openLoanDetail(loanId){
+  activeLoanId = loanId;
+  const loan = await idbGet('loans', loanId);
+  const borrower = await idbGet('borrowers', loan.borrowerId);
+  const { total, paid, balance } = await loanBalance(loan);
+  const interestLabel = loan.interestType === 'none' ? 'No interest'
+    : loan.interestType === 'flat' ? `${loan.interestRate}% flat`
+    : `${loan.interestRate}%/month × ${loan.termMonths}mo`;
+
+  document.getElementById('loan-detail-header').innerHTML = `
+    <div class="name serif">${borrower ? borrower.name : 'Unknown'}</div>
+    <div class="contact">Given ${fmtDate(loan.dateGiven)} · Due ${fmtDate(loan.dueDate)} · ${interestLabel}</div>
+    <div class="balance-row">
+      <div class="balance-label">Balance / Total ₱${peso(total)}</div>
+      <div class="balance-amt mono">₱${peso(balance)}</div>
+    </div>
+  `;
+  const payments = await idbGetByIndex('payments','loanId', loanId);
+  payments.sort((a,b)=> (b.datePaid||'').localeCompare(a.datePaid||''));
+  const listEl = document.getElementById('loan-payments-list');
+  listEl.innerHTML='';
+  if(payments.length === 0){
+    listEl.innerHTML = `<div class="empty-state"><span class="big">₱</span>No payments logged yet.</div>`;
+  } else {
+    for(const p of payments){
+      const row = document.createElement('div');
+      row.className = 'ledger-row';
+      row.innerHTML = `
+        <div class="lr-main">
+          <div class="name">${fmtDate(p.datePaid)}</div>
+          <div class="meta">${p.method.charAt(0).toUpperCase()+p.method.slice(1)}${p.notes?(' · '+p.notes):''}</div>
+        </div>
+        <div class="lr-right">
+          <div class="amt mono" style="color:var(--peso-dark);">+₱${peso(p.amount)}</div>
+        </div>
+      `;
+      listEl.appendChild(row);
+    }
+  }
+  goToView('loan-detail');
+  document.getElementById('bottomnav').style.display='none';
+}
+document.getElementById('back-to-borrower-detail').addEventListener('click', ()=>{
+  openBorrowerDetail(activeBorrowerId);
+});
+document.getElementById('loan-log-payment').addEventListener('click', ()=> openPaymentModal(activeLoanId));
+
+/* =========================================================
+   REPORTS
+   ========================================================= */
+async function renderReports(){
+  const loans = await idbGetAll('loans');
+  const borrowers = await idbGetAll('borrowers');
+  const payments = await idbGetAll('payments');
+
+  const now = new Date();
+  const monthPrefix = now.toISOString().slice(0,7);
+  const monthCollected = payments
+    .filter(p=> (p.datePaid||'').startsWith(monthPrefix))
+    .reduce((s,p)=> s + (Number(p.amount)||0), 0);
+  document.getElementById('month-collected').textContent = peso(monthCollected);
+
+  const overdueEl = document.getElementById('report-overdue-list');
+  overdueEl.innerHTML='';
+  let overdueRows = [];
+  const balances = [];
+  for(const loan of loans){
+    const { balance } = await loanBalance(loan);
+    const status = await loanStatus(loan);
+    const borrower = borrowers.find(b=>b.id===loan.borrowerId);
+    if(status === 'overdue') overdueRows.push({borrower, loan, balance, status});
+    if(balance > 0) balances.push({borrower, balance});
+  }
+  if(overdueRows.length===0){
+    overdueEl.innerHTML = `<div class="empty-state"><span class="big">✓</span>No overdue loans right now.</div>`;
+  } else {
+    overdueRows.sort((a,b)=> (a.loan.dueDate||'').localeCompare(b.loan.dueDate||''));
+    for(const r of overdueRows) overdueEl.appendChild(buildLoanRow(r.borrower, r.loan, r.balance, r.status));
+  }
+
+  const topEl = document.getElementById('report-top-list');
+  topEl.innerHTML='';
+  const byBorrower = {};
+  for(const b of balances){
+    if(!b.borrower) continue;
+    byBorrower[b.borrower.id] = (byBorrower[b.borrower.id]||0) + b.balance;
+  }
+  const topList = Object.entries(byBorrower).map(([id,bal])=>({
+    borrower: borrowers.find(b=>b.id==id), balance: bal
+  })).sort((a,b)=>b.balance-a.balance).slice(0,8);
+
+  if(topList.length===0){
+    topEl.innerHTML = `<div class="empty-state"><span class="big">▤</span>No outstanding balances to show.</div>`;
+  } else {
+    for(const t of topList){
+      const row = document.createElement('div');
+      row.className='ledger-row';
+      row.innerHTML = `
+        <div class="lr-main"><div class="name">${t.borrower.name}</div></div>
+        <div class="lr-right"><div class="amt mono">₱${peso(t.balance)}</div></div>
+      `;
+      row.addEventListener('click', ()=>openBorrowerDetail(t.borrower.id));
+      topEl.appendChild(row);
+    }
+  }
+}
+
+/* =========================================================
+   ADD / SAVE HANDLERS
+   ========================================================= */
+
+/* New / Edit Borrower */
+document.getElementById('qa-new-borrower').addEventListener('click', ()=>{
+  document.getElementById('borrower-modal-title').textContent = 'New Borrower';
+  document.getElementById('b-name').value='';
+  document.getElementById('b-contact').value='';
+  document.getElementById('b-address').value='';
+  delete document.getElementById('save-borrower').dataset.editId;
+  openModal('modal-borrower');
+});
+document.getElementById('cancel-borrower').addEventListener('click', ()=>closeModal('modal-borrower'));
+document.getElementById('save-borrower').addEventListener('click', async (e)=>{
+  const name = document.getElementById('b-name').value.trim();
+  if(!name){ showToast('Please enter a name'); return; }
+  const contact = document.getElementById('b-contact').value.trim();
+  const address = document.getElementById('b-address').value.trim();
+  const editId = e.target.dataset.editId;
+  if(editId){
+    const existing = await idbGet('borrowers', Number(editId));
+    existing.name = name; existing.contact = contact; existing.address = address;
+    await idbPut('borrowers', existing);
+    showToast('Borrower updated');
+    closeModal('modal-borrower');
+    openBorrowerDetail(existing.id);
+  } else {
+    await idbAdd('borrowers', { name, contact, address, dateAdded: todayISO() });
+    showToast('Borrower added');
+    closeModal('modal-borrower');
+    renderBorrowerList();
+    renderDashboard();
+  }
+});
+
+/* New Loan */
+async function openLoanModal(preselectBorrowerId){
+  const borrowers = await idbGetAll('borrowers');
+  const sel = document.getElementById('l-borrower');
+  sel.innerHTML = borrowers.map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+  if(preselectBorrowerId) sel.value = preselectBorrowerId;
+  document.getElementById('loan-borrower-field').style.display = borrowers.length ? 'block' : 'block';
+  document.getElementById('l-principal').value='';
+  document.getElementById('l-rate').value='0';
+  document.getElementById('l-term').value='1';
+  document.getElementById('l-date-given').value = todayISO();
+  const due = new Date(); due.setMonth(due.getMonth()+1);
+  document.getElementById('l-due-date').value = due.toISOString().slice(0,10);
+  document.getElementById('l-notes').value='';
+  [...document.getElementById('l-interest-type').children].forEach(c=>c.classList.remove('selected'));
+  document.getElementById('l-interest-type').children[0].classList.add('selected');
+  if(borrowers.length === 0){
+    showToast('Add a borrower first');
+    return;
+  }
+  openModal('modal-loan');
+}
+document.getElementById('qa-new-loan').addEventListener('click', ()=>openLoanModal(null));
+document.getElementById('cancel-loan').addEventListener('click', ()=>closeModal('modal-loan'));
+document.getElementById('save-loan').addEventListener('click', async ()=>{
+  const borrowerId = Number(document.getElementById('l-borrower').value);
+  const principal = Number(document.getElementById('l-principal').value);
+  if(!principal || principal <= 0){ showToast('Enter a valid amount'); return; }
+  const interestType = getSelectedChip('l-interest-type');
+  const rate = Number(document.getElementById('l-rate').value)||0;
+  const term = Number(document.getElementById('l-term').value)||1;
+  const dateGiven = document.getElementById('l-date-given').value || todayISO();
+  const dueDate = document.getElementById('l-due-date').value;
+  const notes = document.getElementById('l-notes').value.trim();
+
+  await idbAdd('loans', {
+    borrowerId, principal, interestType, interestRate: rate,
+    termMonths: term, dateGiven, dueDate, notes
+  });
+  showToast('Pautang saved');
+  closeModal('modal-loan');
+  renderDashboard();
+  if(activeBorrowerId === borrowerId) openBorrowerDetail(borrowerId);
+  else renderBorrowerList();
+});
+
+/* Log Payment */
+async function openPaymentModal(preselectLoanId){
+  const loans = await idbGetAll('loans');
+  const borrowers = await idbGetAll('borrowers');
+  const sel = document.getElementById('p-loan');
+
+  const openLoans = [];
+  for(const loan of loans){
+    const status = await loanStatus(loan);
+    if(status !== 'paid') openLoans.push(loan);
+  }
+  if(openLoans.length === 0){
+    showToast('No active loans to pay');
+    return;
+  }
+  sel.innerHTML = openLoans.map(loan=>{
+    const b = borrowers.find(x=>x.id===loan.borrowerId);
+    return `<option value="${loan.id}">${b?b.name:'Unknown'} — ₱${peso(loan.principal)} (due ${fmtDate(loan.dueDate)})</option>`;
+  }).join('');
+  if(preselectLoanId) sel.value = preselectLoanId;
+  document.getElementById('p-amount').value='';
+  document.getElementById('p-date').value = todayISO();
+  [...document.getElementById('p-method').children].forEach(c=>c.classList.remove('selected'));
+  document.getElementById('p-method').children[0].classList.add('selected');
+  openModal('modal-payment');
+}
+document.getElementById('qa-log-payment').addEventListener('click', ()=>openPaymentModal(null));
+document.getElementById('cancel-payment').addEventListener('click', ()=>closeModal('modal-payment'));
+document.getElementById('save-payment').addEventListener('click', async ()=>{
+  const loanId = Number(document.getElementById('p-loan').value);
+  const amount = Number(document.getElementById('p-amount').value);
+  if(!amount || amount <= 0){ showToast('Enter a valid amount'); return; }
+  const datePaid = document.getElementById('p-date').value || todayISO();
+  const method = getSelectedChip('p-method');
+  await idbAdd('payments', { loanId, amount, datePaid, method, notes:'' });
+  showToast('Payment logged');
+  closeModal('modal-payment');
+  renderDashboard();
+  if(activeLoanId === loanId) openLoanDetail(loanId);
+  else if(activeBorrowerId) openBorrowerDetail(activeBorrowerId);
+});
+
+/* =========================================================
+   SETTINGS
+   ========================================================= */
+document.getElementById('settings-change-pin').addEventListener('click', ()=>{
+  pinMode = 'change-verify';
+  pinBuffer = '';
+  document.getElementById('pin-instruction').textContent = 'Enter current PIN';
+  document.getElementById('pin-error').textContent='';
+  renderPinDots();
+  document.getElementById('app').style.display='none';
+  document.getElementById('bottomnav').style.display='none';
+  document.getElementById('pin-screen').style.display='flex';
+});
+
+document.getElementById('settings-export').addEventListener('click', async ()=>{
+  const data = {
+    borrowers: await idbGetAll('borrowers'),
+    loans: await idbGetAll('loans'),
+    payments: await idbGetAll('payments'),
+    exportedAt: new Date().toISOString(),
+    app: 'PautangPro', version: 1
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pautang-pro-backup-${todayISO()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('Backup file downloaded');
+});
+
+document.getElementById('settings-import').addEventListener('click', ()=>{
+  document.getElementById('import-file-input').click();
+});
+document.getElementById('import-file-input').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(!data.borrowers || !data.loans || !data.payments) throw new Error('bad file');
+    if(!confirm('This will replace all current data with the backup file. Continue?')) return;
+    await idbClear('borrowers'); await idbClear('loans'); await idbClear('payments');
+    for(const b of data.borrowers) await idbPut('borrowers', b);
+    for(const l of data.loans) await idbPut('loans', l);
+    for(const p of data.payments) await idbPut('payments', p);
+    showToast('Backup restored');
+    refreshAll();
+    goToView('dashboard');
+  }catch(err){
+    showToast('Invalid backup file');
+  }
+  e.target.value = '';
+});
+
+/* Change PIN modal (unused overlay kept for potential future direct-modal flow) */
+document.getElementById('cancel-pin-change').addEventListener('click', ()=>closeModal('modal-pin-change'));
+
+/* =========================================================
+   INSTALL PROMPT (PWA)
+   ========================================================= */
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  renderInstallBanner();
+});
+function renderInstallBanner(){
+  if(!deferredInstallPrompt) return;
+  const slot = document.getElementById('install-banner-slot');
+  slot.innerHTML = `
+    <div class="install-banner screen">
+      <div class="txt">Install Pautang Pro on your phone for quick access.</div>
+      <button id="do-install">Install</button>
+    </div>
+  `;
+  document.getElementById('do-install').addEventListener('click', async ()=>{
+    if(!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    slot.innerHTML='';
+  });
+}
+
+/* =========================================================
+   INIT
+   ========================================================= */
+async function refreshAll(){
+  await renderDashboard();
+  await renderBorrowerList();
+  await renderReports();
+}
+
+(async function init(){
+  document.getElementById('today-label').textContent = new Date().toLocaleDateString('en-PH', { weekday:'short', month:'short', day:'numeric' });
+  db = await openDB();
+  await initPinScreen();
+
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "Pautang Pro",
+  "short_name": "Pautang Pro",
+  "description": "Track your pautang ledger — borrowers, loans, and payments, all on your device.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EFE9D8",
+  "theme_color": "#1E2A2E",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
