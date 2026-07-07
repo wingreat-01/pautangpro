@@ -575,6 +575,17 @@ a{color:inherit;}
           <div class="chev">›</div>
         </div>
       </div>
+      <div class="section-label screen">Reminders</div>
+      <div class="screen">
+        <div class="settings-item" id="settings-reminders-toggle">
+          <div><div class="l">Due Date Reminders</div><div class="d" id="reminders-desc">Notify me when a pautang is due or overdue</div></div>
+          <div class="chev" id="reminders-toggle-state">Off ›</div>
+        </div>
+        <div class="settings-item" id="settings-check-now" style="display:none;">
+          <div><div class="l">Check Now</div><div class="d">Manually check today's due/overdue loans</div></div>
+          <div class="chev">›</div>
+        </div>
+      </div>
       <div class="section-label screen">Data</div>
       <div class="screen">
         <div class="settings-item" id="settings-export">
@@ -946,6 +957,7 @@ function enterApp(){
   document.getElementById('bottomnav').style.display='flex';
   pinBuffer='';
   refreshAll();
+  checkAndNotifyDueLoans(false);
 }
 
 document.getElementById('pin-pad').addEventListener('click', (e)=>{
@@ -971,6 +983,7 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
     if(btn.dataset.view==='borrowers') renderBorrowerList();
     if(btn.dataset.view==='dashboard') renderDashboard();
     if(btn.dataset.view==='reports') renderReports();
+    if(btn.dataset.view==='settings') updateRemindersUI();
   });
 });
 
@@ -1653,6 +1666,161 @@ function setupVoiceRecognition(){
     try{ recognition.start(); }catch(err){ /* already started */ }
   });
 }
+
+/* =========================================================
+   DUE DATE REMINDERS
+   Local Notification API only — no push server, no backend.
+   On every app open (and via "Check Now"), scans loans due
+   today or overdue and fires a local notification, deduped
+   per loan per day so it doesn't repeat-spam on every launch.
+   Best-effort Periodic Background Sync is also attempted for
+   installed PWAs on supporting browsers (mainly Chrome/Android);
+   this is NOT guaranteed to fire on a schedule — true scheduled
+   reminders while the app is fully closed would need a push
+   server, which is out of scope for the local-only build.
+   ========================================================= */
+
+async function getNotifiedSet(){
+  const rec = await idbGet('settings','notifiedLoanKeys');
+  return rec ? new Set(rec.value) : new Set();
+}
+async function saveNotifiedSet(set){
+  await idbPut('settings', { key:'notifiedLoanKeys', value:[...set] });
+}
+async function remindersEnabled(){
+  const rec = await idbGet('settings','notificationsEnabled');
+  return !!(rec && rec.value);
+}
+
+function canNotify(){
+  return 'Notification' in window;
+}
+
+async function checkAndNotifyDueLoans(manual){
+  if(!(await remindersEnabled())) {
+    if(manual) showToast('Turn on Due Date Reminders first');
+    return;
+  }
+  if(!canNotify() || Notification.permission !== 'granted'){
+    if(manual) showToast('Notification permission not granted');
+    return;
+  }
+  const loans = await idbGetAll('loans');
+  const borrowers = await idbGetAll('borrowers');
+  const today = todayISO();
+  const notified = await getNotifiedSet();
+  const dueList = [];
+
+  for(const loan of loans){
+    const status = await loanStatus(loan);
+    if(status === 'paid') continue;
+    const isDueOrOverdue = (loan.dueDate === today) || (loan.dueDate && loan.dueDate < today);
+    if(!isDueOrOverdue) continue;
+    const key = loan.id + ':' + today;
+    if(notified.has(key)) continue;
+    const borrower = borrowers.find(b=>b.id===loan.borrowerId);
+    const { balance } = await loanBalance(loan);
+    dueList.push({ loan, borrower, balance, key, overdue: loan.dueDate < today });
+  }
+
+  if(dueList.length === 0){
+    if(manual) showToast('Nothing new to remind you about');
+    return;
+  }
+
+  if(dueList.length === 1){
+    const d = dueList[0];
+    new Notification('Pautang Pro — ' + (d.overdue ? 'Overdue' : 'Due Today'), {
+      body: `${d.borrower ? d.borrower.name : 'A borrower'} — ₱${peso(d.balance)}`,
+      icon: 'icon-192.png',
+      tag: d.key
+    });
+  } else {
+    const overdueCount = dueList.filter(d=>d.overdue).length;
+    new Notification('Pautang Pro — Collections Reminder', {
+      body: `${dueList.length} loans need attention (${overdueCount} overdue). Open the app to review.`,
+      icon: 'icon-192.png',
+      tag: 'batch-' + today
+    });
+  }
+
+  dueList.forEach(d => notified.add(d.key));
+  // keep the set from growing forever — drop anything not from today or yesterday
+  const trimmed = new Set([...notified].filter(k => k.endsWith(today)));
+  await saveNotifiedSet(trimmed);
+
+  if(manual) showToast(`Reminder sent for ${dueList.length} loan(s)`);
+}
+
+async function tryRegisterPeriodicSync(){
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    if('periodicSync' in reg){
+      const status = await navigator.permissions.query({ name:'periodic-background-sync' });
+      if(status.state === 'granted'){
+        await reg.periodicSync.register('pautang-due-check', { minInterval: 12 * 60 * 60 * 1000 });
+      }
+    }
+  }catch(err){
+    // Periodic Background Sync isn't supported on this browser/device — silently skip.
+    // Reminders still work every time the person opens the app.
+  }
+}
+
+async function updateRemindersUI(){
+  const enabled = await remindersEnabled();
+  const stateEl = document.getElementById('reminders-toggle-state');
+  const descEl = document.getElementById('reminders-desc');
+  const checkNowEl = document.getElementById('settings-check-now');
+  if(enabled && canNotify() && Notification.permission === 'granted'){
+    stateEl.textContent = 'On ›';
+    descEl.textContent = 'Notify me when a pautang is due or overdue';
+    checkNowEl.style.display = 'flex';
+  } else {
+    stateEl.textContent = 'Off ›';
+    checkNowEl.style.display = 'none';
+    if(!canNotify()){
+      descEl.textContent = 'Not supported on this browser';
+    } else if(Notification.permission === 'denied'){
+      descEl.textContent = 'Blocked — enable notifications in your browser/app settings';
+    } else {
+      descEl.textContent = 'Notify me when a pautang is due or overdue';
+    }
+  }
+}
+
+document.getElementById('settings-reminders-toggle').addEventListener('click', async ()=>{
+  if(!canNotify()){
+    showToast('Notifications not supported on this device');
+    return;
+  }
+  const enabled = await remindersEnabled();
+  if(enabled){
+    await idbPut('settings', { key:'notificationsEnabled', value:false });
+    showToast('Reminders turned off');
+    updateRemindersUI();
+    return;
+  }
+  if(Notification.permission === 'denied'){
+    showToast('Notifications are blocked — enable them in your browser settings');
+    updateRemindersUI();
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  if(perm === 'granted'){
+    await idbPut('settings', { key:'notificationsEnabled', value:true });
+    showToast('Reminders turned on');
+    tryRegisterPeriodicSync();
+    checkAndNotifyDueLoans(false);
+  } else {
+    showToast('Permission not granted');
+  }
+  updateRemindersUI();
+});
+
+document.getElementById('settings-check-now').addEventListener('click', ()=>{
+  checkAndNotifyDueLoans(true);
+});
 
 /* =========================================================
    INIT
