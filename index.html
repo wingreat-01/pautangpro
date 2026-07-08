@@ -1972,7 +1972,26 @@ function borrowerConfirmMessage(data){
     + `<strong>Name:</strong> ${data.name}<br>`
     + `<strong>Contact:</strong> ${data.contact || '(none)'}<br>`
     + `<strong>Address:</strong> ${data.address || '(none)'}<br><br>`
-    + `Should I save this? Say "yes" to save, or say "name", "contact", or "address" to fix something.`;
+    + `Should I save this? Say "yes" to save, or tell me the fix — e.g. "contact is 0917 123 4567".`;
+}
+
+function extractPhoneNumber(text){
+  const m = text.match(/(\+?\d[\d\s-]{6,14}\d)/);
+  return m ? m[0].trim() : null;
+}
+
+const CORRECTION_FILLER = [
+  'no','nope','hindi','mali','wrong','is','its',"it's",'the','a','an','should','be',
+  'correct','actually','po','na','please','name','contact','number','mobile','phone',
+  'address','not','instead','change','fix','update','it','to','should be'
+];
+function stripCorrectionFiller(text){
+  let t = ' ' + text.toLowerCase() + ' ';
+  CORRECTION_FILLER.forEach(w=>{
+    t = t.replace(new RegExp('\\b'+w.replace(/'/g,"\\'")+'\\b','g'), ' ');
+  });
+  t = t.replace(/\s+/g,' ').trim();
+  return t.length >= 2 ? t : null;
 }
 
 async function startBorrowerFlow(){
@@ -2028,33 +2047,57 @@ async function handleFlowAnswer(rawTranscript){
     vcAddAssistantReply(borrowerConfirmMessage(voiceFlow.data), 'Confirm');
     autoListenNext();
   } else if(step === 'confirm'){
-    if(/^(yes|yep|yeah|yup|oo|opo|tama|correct|save|save it|go ahead|confirm)\.?$/i.test(lower)){
+    const mentionsField = /\b(name|contact|number|mobile|phone|address)\b/i.test(lower);
+
+    // "yes" — but only treat it as approval if they're not also naming a field to fix
+    // (handles "yes save it" as well as a plain "yes", without misfiring on
+    //  something like "no the contact number is wrong")
+    if(!mentionsField && /\b(yes|yep|yeah|yup|oo|opo|tama|correct|confirmed?|save|go ahead)\b/i.test(lower)){
       await finishBorrowerFlow();
       return;
     }
-    if(/name/.test(lower)){
-      voiceFlow.step = 'name';
-      voiceFlow.correcting = true;
-      vcAddAssistantReply("Okay — what's the correct full name?");
+
+    if(/\bname\b/i.test(lower)){
+      const cleaned = stripCorrectionFiller(value);
+      if(cleaned){
+        voiceFlow.data.name = titleCase(cleaned);
+        vcAddAssistantReply(`Updated name to <strong>${voiceFlow.data.name}</strong>.<br><br>` + borrowerConfirmMessage(voiceFlow.data), 'Confirm');
+      } else {
+        voiceFlow.step = 'name';
+        voiceFlow.correcting = true;
+        vcAddAssistantReply("Okay — what's the correct full name?");
+      }
       autoListenNext();
       return;
     }
-    if(/contact|number|mobile|phone/.test(lower)){
-      voiceFlow.step = 'contact';
-      voiceFlow.correcting = true;
-      vcAddAssistantReply("Okay — what's the correct contact number?");
+    if(/\b(contact|number|mobile|phone)\b/i.test(lower)){
+      const phone = extractPhoneNumber(value);
+      if(phone){
+        voiceFlow.data.contact = phone;
+        vcAddAssistantReply(`Updated contact to <strong>${phone}</strong>.<br><br>` + borrowerConfirmMessage(voiceFlow.data), 'Confirm');
+      } else {
+        voiceFlow.step = 'contact';
+        voiceFlow.correcting = true;
+        vcAddAssistantReply("Okay — what's the correct contact number?");
+      }
       autoListenNext();
       return;
     }
-    if(/address/.test(lower)){
-      voiceFlow.step = 'address';
-      voiceFlow.correcting = true;
-      vcAddAssistantReply("Okay — what's the correct address?");
+    if(/\baddress\b/i.test(lower)){
+      const cleaned = stripCorrectionFiller(value);
+      if(cleaned){
+        voiceFlow.data.address = cleaned;
+        vcAddAssistantReply(`Updated address to <strong>${cleaned}</strong>.<br><br>` + borrowerConfirmMessage(voiceFlow.data), 'Confirm');
+      } else {
+        voiceFlow.step = 'address';
+        voiceFlow.correcting = true;
+        vcAddAssistantReply("Okay — what's the correct address?");
+      }
       autoListenNext();
       return;
     }
-    if(/^(no|nope|hindi|mali)\.?$/i.test(lower)){
-      vcAddAssistantReply('No problem — what should I fix? Say "name", "contact", or "address".');
+    if(/\b(no|nope|hindi|mali|wrong)\b/i.test(lower)){
+      vcAddAssistantReply('No problem — what should I fix? Say "name", "contact", or "address" — you can also just say the correct value in the same breath, e.g. "contact is 0917 123 4567".');
       autoListenNext();
       return;
     }
