@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pautang-pro-v3';
+const CACHE_NAME = 'pautang-pro-v4';
 const ASSETS = [
   './',
   './index.html',
