@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pautang-pro-v2';
+const CACHE_NAME = 'pautang-pro-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -7,7 +7,10 @@ const ASSETS = [
   './icon-512.png',
   './vendor/xlsx.full.min.js',
   './vendor/jspdf.umd.min.js',
-  './vendor/jspdf.plugin.autotable.min.js'
+  './vendor/jspdf.plugin.autotable.min.js',
+  './vendor/firebase-app-compat.js',
+  './vendor/firebase-auth-compat.js',
+  './vendor/firebase-firestore-compat.js'
 ];
 
 self.addEventListener('install', (event) => {

@@ -20,7 +20,7 @@
 | §6 Architecture | Local-only decision locked in | ✅ Decided |
 | §4 Phase 2 | Voice logging (mic → parse → prefill modal) | ✅ Built — bonus feature, added ahead of plan |
 | §4 Phase 2 | Export to PDF/Excel | ✅ Built — pulled in early from Phase 2 |
-| §4 Phase 2 | Cloud sync / shared account (Firebase) | ⬜ Discussed, not started |
+| §4 Phase 2 | Cloud sync / shared account (Firebase) | ✅ Built — email/password sign-in, Firestore mirror + last-write-wins sync across devices (single-account only, not multi-user staff logins yet) |
 | §8 Play Store | PWA → TWA packaging (PWABuilder) | ⬜ Not started — waiting until app is feature-complete |
 | §8 Play Store | Play Console setup, privacy policy, store listing | ⬜ Not started |
 | §12 Open decisions | Pricing model (one-time/freemium/subscription) | ⬜ Still open |

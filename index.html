@@ -14,6 +14,9 @@
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/jspdf.umd.min.js"></script>
 <script src="vendor/jspdf.plugin.autotable.min.js"></script>
+<script src="vendor/firebase-app-compat.js"></script>
+<script src="vendor/firebase-auth-compat.js"></script>
+<script src="vendor/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --paper:#EFE9D8;
@@ -590,6 +593,13 @@ a{color:inherit;}
           <div class="chev">›</div>
         </div>
       </div>
+      <div class="section-label screen">Cloud Sync</div>
+      <div class="screen">
+        <div class="settings-item" id="settings-cloud-sync">
+          <div><div class="l">Cloud Sync</div><div class="d" id="cloud-status-desc">Not signed in — data stays on this device</div></div>
+          <div class="chev">›</div>
+        </div>
+      </div>
       <div class="section-label screen">Data</div>
       <div class="screen">
         <div class="settings-item" id="settings-export-excel">
@@ -612,7 +622,7 @@ a{color:inherit;}
       </div>
       <div class="section-label screen">About</div>
       <div class="screen" style="margin:0 20px; font-size:12px; color:var(--ink-soft); line-height:1.6;">
-        Pautang Pro v1.0 — your ledger stays on this device only. No account, no internet required.
+        Pautang Pro v1.0 — your ledger stays on this device by default. No account, no internet required. Sign in under Cloud Sync to back up and sync across devices.
       </div>
     </div>
 
@@ -712,6 +722,35 @@ a{color:inherit;}
     </div>
   </div>
 
+  <!-- MODAL: Cloud Sync -->
+  <div class="modal-overlay" id="modal-cloud-sync">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Cloud Sync</div>
+
+      <div id="cloud-signed-out">
+        <div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;line-height:1.5;">
+          Sign in to back up your ledger and keep it in sync across your phone and other devices. Your data is private to your account.
+        </div>
+        <div class="field"><label>Email</label><input type="email" id="cloud-email" autocomplete="email" inputmode="email"></div>
+        <div class="field"><label>Password</label><input type="password" id="cloud-password" autocomplete="current-password"></div>
+        <div id="cloud-auth-error" style="color:var(--red);font-size:12px;margin:-4px 0 10px;min-height:14px;"></div>
+        <button class="btn-primary" id="cloud-signin-btn">Sign In</button>
+        <button class="btn-secondary" id="cloud-signup-btn">Create Account</button>
+      </div>
+
+      <div id="cloud-signed-in" style="display:none;">
+        <div style="font-size:13px;color:var(--ink-soft);margin-bottom:4px;">Signed in as</div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px;" id="cloud-account-email">—</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;" id="cloud-sync-status">Not synced yet</div>
+        <button class="btn-primary" id="cloud-sync-now-btn">Sync Now</button>
+        <button class="btn-secondary" id="cloud-signout-btn">Sign Out</button>
+      </div>
+
+      <button class="btn-secondary" id="cancel-cloud-sync">Close</button>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
 </div>
@@ -805,6 +844,202 @@ function idbClear(storeName){
     req.onerror = ()=>reject(req.error);
   });
 }
+
+/* =========================================================
+   CLOUD SYNC (Firebase Auth + Firestore)
+   Local-first: every write lands in IndexedDB first, same as
+   before. If a user signs in, records are additionally mirrored
+   to Firestore under users/{uid}/{store}/{id}, and pulled/merged
+   back using a simple last-write-wins rule on `updatedAt`.
+   Signing out simply stops the mirroring — local data is untouched.
+   ========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyCTPB3UouTqG_lZn8a0Zk5RVOq5gamm9Pk",
+  authDomain: "pautang-pro.firebaseapp.com",
+  projectId: "pautang-pro",
+  storageBucket: "pautang-pro.firebasestorage.app",
+  messagingSenderId: "489978264423",
+  appId: "1:489978264423:web:2029a76715b297aca00dc2"
+};
+let fbAuth = null, fbStore = null, fbUser = null, cloudSyncBusy = false, cloudAutoTimer = null;
+
+function newRecordId(){
+  // Millisecond timestamp + random 3-digit suffix. Kept numeric (not UUID)
+  // so it stays compatible with every existing Number()/=== comparison
+  // in the app, while being collision-safe enough across devices for
+  // a single lender's own ledger.
+  return Date.now() * 1000 + Math.floor(Math.random() * 1000);
+}
+
+function initFirebase(){
+  try{
+    if(typeof firebase === 'undefined') return;
+    firebase.initializeApp(firebaseConfig);
+    fbAuth = firebase.auth();
+    fbStore = firebase.firestore();
+    fbStore.enablePersistence({ synchronizeTabs:true }).catch(()=>{});
+    fbAuth.onAuthStateChanged(onCloudAuthStateChanged);
+  }catch(err){
+    console.warn('Firebase init failed', err);
+  }
+}
+
+async function onCloudAuthStateChanged(user){
+  fbUser = user;
+  updateCloudSyncUI();
+  if(cloudAutoTimer){ clearInterval(cloudAutoTimer); cloudAutoTimer = null; }
+  if(user){
+    runFullCloudSync(false);
+    cloudAutoTimer = setInterval(()=>runFullCloudSync(false), 3 * 60 * 1000);
+  }
+}
+
+window.addEventListener('online', ()=>{ if(fbUser) runFullCloudSync(false); });
+
+function updateCloudSyncUI(){
+  const desc = document.getElementById('cloud-status-desc');
+  if(desc){
+    desc.textContent = fbUser ? `Signed in as ${fbUser.email}` : 'Not signed in — data stays on this device';
+  }
+  const signedOut = document.getElementById('cloud-signed-out');
+  const signedIn = document.getElementById('cloud-signed-in');
+  if(!signedOut || !signedIn) return;
+  if(fbUser){
+    signedOut.style.display = 'none';
+    signedIn.style.display = 'block';
+    document.getElementById('cloud-account-email').textContent = fbUser.email;
+  } else {
+    signedOut.style.display = 'block';
+    signedIn.style.display = 'none';
+  }
+}
+
+/* Fire-and-forget push of a single record right after a local write.
+   Firestore's own offline cache (enablePersistence above) queues this
+   write if there's no connection, and sends it once back online. */
+function queueRecordSync(storeName, record){
+  if(!fbUser || !fbStore) return;
+  fbStore.collection('users').doc(fbUser.uid).collection(storeName)
+    .doc(String(record.id)).set(record).catch(()=>{});
+}
+
+async function pullAndMergeCollection(storeName){
+  const col = fbStore.collection('users').doc(fbUser.uid).collection(storeName);
+  const snap = await col.get();
+  const remoteRecords = [];
+  snap.forEach(doc=>remoteRecords.push(doc.data()));
+  const localRecords = await idbGetAll(storeName);
+  const localById = new Map(localRecords.map(r=>[String(r.id), r]));
+  const toPush = [];
+
+  for(const remote of remoteRecords){
+    const key = String(remote.id);
+    const local = localById.get(key);
+    if(!local){
+      await idbPut(storeName, remote);
+    } else {
+      const remoteTs = remote.updatedAt || 0;
+      const localTs = local.updatedAt || 0;
+      if(remoteTs > localTs){
+        await idbPut(storeName, remote);
+      } else if(localTs > remoteTs){
+        toPush.push(local);
+      }
+      localById.delete(key);
+    }
+  }
+  // Whatever's left in localById exists locally but not in the cloud yet.
+  for(const local of localById.values()){
+    if(!local.updatedAt){ local.updatedAt = Date.now(); await idbPut(storeName, local); }
+    toPush.push(local);
+  }
+
+  const batchSize = 400;
+  for(let i=0;i<toPush.length;i+=batchSize){
+    const batch = fbStore.batch();
+    toPush.slice(i, i+batchSize).forEach(r=>batch.set(col.doc(String(r.id)), r));
+    await batch.commit();
+  }
+}
+
+async function runFullCloudSync(showUi){
+  if(!fbUser || !fbStore || cloudSyncBusy) return;
+  cloudSyncBusy = true;
+  const statusEl = document.getElementById('cloud-sync-status');
+  if(showUi && statusEl) statusEl.textContent = 'Syncing…';
+  try{
+    await pullAndMergeCollection('borrowers');
+    await pullAndMergeCollection('loans');
+    await pullAndMergeCollection('payments');
+    if(statusEl) statusEl.textContent = 'Last synced ' + new Date().toLocaleString('en-PH');
+    await refreshAll();
+    if(showUi) showToast('Cloud sync complete');
+  }catch(err){
+    console.warn('Cloud sync failed', err);
+    if(statusEl) statusEl.textContent = 'Sync failed — check your connection';
+    if(showUi) showToast('Sync failed — will retry automatically');
+  }finally{
+    cloudSyncBusy = false;
+  }
+}
+
+function cloudAuthErrorMessage(err){
+  switch(err && err.code){
+    case 'auth/invalid-email': return 'That email address looks invalid.';
+    case 'auth/user-not-found': return 'No account found with that email.';
+    case 'auth/wrong-password': case 'auth/invalid-credential': return 'Incorrect email or password.';
+    case 'auth/email-already-in-use': return 'That email already has an account — try Sign In instead.';
+    case 'auth/weak-password': return 'Password should be at least 6 characters.';
+    default: return (err && err.message) || 'Something went wrong. Please try again.';
+  }
+}
+
+document.getElementById('settings-cloud-sync').addEventListener('click', ()=>{
+  document.getElementById('cloud-email').value = '';
+  document.getElementById('cloud-password').value = '';
+  document.getElementById('cloud-auth-error').textContent = '';
+  updateCloudSyncUI();
+  openModal('modal-cloud-sync');
+});
+document.getElementById('cancel-cloud-sync').addEventListener('click', ()=>closeModal('modal-cloud-sync'));
+
+document.getElementById('cloud-signup-btn').addEventListener('click', async ()=>{
+  const email = document.getElementById('cloud-email').value.trim();
+  const password = document.getElementById('cloud-password').value;
+  const errEl = document.getElementById('cloud-auth-error');
+  errEl.textContent = '';
+  if(!email || !password){ errEl.textContent = 'Enter an email and password.'; return; }
+  try{
+    await fbAuth.createUserWithEmailAndPassword(email, password);
+    showToast('Account created — syncing your ledger');
+    updateCloudSyncUI();
+  }catch(err){
+    errEl.textContent = cloudAuthErrorMessage(err);
+  }
+});
+document.getElementById('cloud-signin-btn').addEventListener('click', async ()=>{
+  const email = document.getElementById('cloud-email').value.trim();
+  const password = document.getElementById('cloud-password').value;
+  const errEl = document.getElementById('cloud-auth-error');
+  errEl.textContent = '';
+  if(!email || !password){ errEl.textContent = 'Enter your email and password.'; return; }
+  try{
+    await fbAuth.signInWithEmailAndPassword(email, password);
+    showToast('Signed in — syncing your ledger');
+    updateCloudSyncUI();
+  }catch(err){
+    errEl.textContent = cloudAuthErrorMessage(err);
+  }
+});
+document.getElementById('cloud-signout-btn').addEventListener('click', async ()=>{
+  await fbAuth.signOut();
+  updateCloudSyncUI();
+  showToast('Signed out — ledger stays on this device');
+  closeModal('modal-cloud-sync');
+});
+document.getElementById('cloud-sync-now-btn').addEventListener('click', ()=>runFullCloudSync(true));
+
+initFirebase();
 
 /* ---------- Helpers ---------- */
 function peso(n){
@@ -1308,12 +1543,16 @@ document.getElementById('save-borrower').addEventListener('click', async (e)=>{
   if(editId){
     const existing = await idbGet('borrowers', Number(editId));
     existing.name = name; existing.contact = contact; existing.address = address;
+    existing.updatedAt = Date.now();
     await idbPut('borrowers', existing);
+    queueRecordSync('borrowers', existing);
     showToast('Borrower updated');
     closeModal('modal-borrower');
     openBorrowerDetail(existing.id);
   } else {
-    await idbAdd('borrowers', { name, contact, address, dateAdded: todayISO() });
+    const record = { id: newRecordId(), name, contact, address, dateAdded: todayISO(), updatedAt: Date.now() };
+    await idbAdd('borrowers', record);
+    queueRecordSync('borrowers', record);
     showToast('Borrower added');
     closeModal('modal-borrower');
     renderBorrowerList();
@@ -1356,10 +1595,12 @@ document.getElementById('save-loan').addEventListener('click', async ()=>{
   const dueDate = document.getElementById('l-due-date').value;
   const notes = document.getElementById('l-notes').value.trim();
 
-  await idbAdd('loans', {
-    borrowerId, principal, interestType, interestRate: rate,
-    termMonths: term, dateGiven, dueDate, notes
-  });
+  const loanRecord = {
+    id: newRecordId(), borrowerId, principal, interestType, interestRate: rate,
+    termMonths: term, dateGiven, dueDate, notes, updatedAt: Date.now()
+  };
+  await idbAdd('loans', loanRecord);
+  queueRecordSync('loans', loanRecord);
   showToast('Pautang saved');
   closeModal('modal-loan');
   renderDashboard();
@@ -1401,7 +1642,9 @@ document.getElementById('save-payment').addEventListener('click', async ()=>{
   if(!amount || amount <= 0){ showToast('Enter a valid amount'); return; }
   const datePaid = document.getElementById('p-date').value || todayISO();
   const method = getSelectedChip('p-method');
-  await idbAdd('payments', { loanId, amount, datePaid, method, notes:'' });
+  const paymentRecord = { id: newRecordId(), loanId, amount, datePaid, method, notes:'', updatedAt: Date.now() };
+  await idbAdd('payments', paymentRecord);
+  queueRecordSync('payments', paymentRecord);
   showToast('Payment logged');
   closeModal('modal-payment');
   renderDashboard();
@@ -1461,6 +1704,7 @@ document.getElementById('import-file-input').addEventListener('change', async (e
     showToast('Backup restored');
     refreshAll();
     goToView('dashboard');
+    if(fbUser) runFullCloudSync(false); // push restored data to the cloud too, if signed in
   }catch(err){
     showToast('Invalid backup file');
   }
