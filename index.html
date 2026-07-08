@@ -1801,6 +1801,7 @@ function renderInstallBanner(){
    pull out an intent, an amount, and a borrower name.
    ========================================================= */
 
+const BORROWER_TRIGGERS = ['new borrower','add borrower','register borrower','create borrower','new customer','add customer','bagong borrower','magparehistro'];
 const PAYMENT_TRIGGERS = ['log payment','payment','pay ','nagbayad','magbayad','bayad'];
 const LOAN_TRIGGERS = ['new loan','new pautang','pautang','utang','nangutang','nagpautang','lend','loan'];
 
@@ -1813,6 +1814,7 @@ const VOICE_STOPWORDS = [
 
 function detectVoiceIntent(text){
   const t = ' ' + text.toLowerCase() + ' ';
+  for(const trig of BORROWER_TRIGGERS){ if(t.includes(trig)) return 'borrower'; }
   for(const trig of PAYMENT_TRIGGERS){ if(t.includes(trig)) return 'payment'; }
   for(const trig of LOAN_TRIGGERS){ if(t.includes(trig)) return 'loan'; }
   return null;
@@ -1932,7 +1934,7 @@ function vcResetChat(){
   vcInterimEl = null;
   const el = vcMessagesEl();
   el.innerHTML = '';
-  vcAddAssistantReply('Hi! Tap the mic and tell me what to log — e.g. "log payment to Juan 500 pesos" or "new pautang for Maria 1000".');
+  vcAddAssistantReply('Hi! Tap the mic and tell me what to log — e.g. "log payment to Juan 500 pesos", "new pautang for Maria 1000", or "new borrower".');
 }
 
 function openVoiceChat(){
@@ -1943,22 +1945,170 @@ function openVoiceChat(){
 function closeVoiceChat(){
   document.getElementById('voice-chat-overlay').classList.remove('show');
   if(isListening) recognition.stop();
+  voiceFlow = null;
+}
+
+/* ---------- Multi-turn guided flows (e.g. "new borrower") ---------- */
+let voiceFlow = null; // { type, step, data }
+
+const BORROWER_FLOW_QUESTIONS = {
+  name: "Sure — what's the borrower's full name?",
+  contact: 'Got it. What\'s their contact number? Say "skip" if none.',
+  address: 'And their address? Say "skip" if none.'
+};
+
+function autoListenNext(){
+  // give the assistant's reply a beat to be read, then auto-open the mic for the next answer
+  setTimeout(()=>{
+    const stillOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
+    if(stillOpen && !isListening){
+      try{ recognition.start(); }catch(err){ /* already started */ }
+    }
+  }, 500);
+}
+
+function borrowerConfirmMessage(data){
+  return `Here's what I got:<br>`
+    + `<strong>Name:</strong> ${data.name}<br>`
+    + `<strong>Contact:</strong> ${data.contact || '(none)'}<br>`
+    + `<strong>Address:</strong> ${data.address || '(none)'}<br><br>`
+    + `Should I save this? Say "yes" to save, or say "name", "contact", or "address" to fix something.`;
+}
+
+async function startBorrowerFlow(){
+  voiceFlow = { type:'newBorrower', step:'name', data:{}, correcting:false };
+  vcAddAssistantReply(BORROWER_FLOW_QUESTIONS.name, 'New Borrower');
+  autoListenNext();
+}
+
+async function handleFlowAnswer(rawTranscript){
+  const value = rawTranscript.trim();
+  const lower = value.toLowerCase();
+
+  if(/^(cancel|stop|never\s*mind|forget\s*it|huwag\s*na)\.?$/i.test(value)){
+    vcAddAssistantReply("Okay, cancelled — no borrower was added.");
+    voiceFlow = null;
+    return;
+  }
+
+  const skip = /^(skip|wala|none|walang|wala\s*po)\.?$/i.test(value);
+  const step = voiceFlow.step;
+
+  if(step === 'name'){
+    if(skip || !value){
+      vcAddAssistantReply("I need a name to continue — what's the borrower's full name?");
+      autoListenNext();
+      return;
+    }
+    voiceFlow.data.name = titleCase(value);
+    if(voiceFlow.correcting){
+      voiceFlow.correcting = false;
+      voiceFlow.step = 'confirm';
+      vcAddAssistantReply(borrowerConfirmMessage(voiceFlow.data), 'Confirm');
+    } else {
+      voiceFlow.step = 'contact';
+      vcAddAssistantReply(`${voiceFlow.data.name} — ${BORROWER_FLOW_QUESTIONS.contact}`);
+    }
+    autoListenNext();
+  } else if(step === 'contact'){
+    voiceFlow.data.contact = skip ? '' : value;
+    if(voiceFlow.correcting){
+      voiceFlow.correcting = false;
+      voiceFlow.step = 'confirm';
+      vcAddAssistantReply(borrowerConfirmMessage(voiceFlow.data), 'Confirm');
+    } else {
+      voiceFlow.step = 'address';
+      vcAddAssistantReply(BORROWER_FLOW_QUESTIONS.address);
+    }
+    autoListenNext();
+  } else if(step === 'address'){
+    voiceFlow.data.address = skip ? '' : value;
+    voiceFlow.correcting = false;
+    voiceFlow.step = 'confirm';
+    vcAddAssistantReply(borrowerConfirmMessage(voiceFlow.data), 'Confirm');
+    autoListenNext();
+  } else if(step === 'confirm'){
+    if(/^(yes|yep|yeah|yup|oo|opo|tama|correct|save|save it|go ahead|confirm)\.?$/i.test(lower)){
+      await finishBorrowerFlow();
+      return;
+    }
+    if(/name/.test(lower)){
+      voiceFlow.step = 'name';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply("Okay — what's the correct full name?");
+      autoListenNext();
+      return;
+    }
+    if(/contact|number|mobile|phone/.test(lower)){
+      voiceFlow.step = 'contact';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply("Okay — what's the correct contact number?");
+      autoListenNext();
+      return;
+    }
+    if(/address/.test(lower)){
+      voiceFlow.step = 'address';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply("Okay — what's the correct address?");
+      autoListenNext();
+      return;
+    }
+    if(/^(no|nope|hindi|mali)\.?$/i.test(lower)){
+      vcAddAssistantReply('No problem — what should I fix? Say "name", "contact", or "address".');
+      autoListenNext();
+      return;
+    }
+    vcAddAssistantReply('Sorry, didn\'t catch that — say "yes" to save, or "name", "contact", or "address" to fix something.');
+    autoListenNext();
+  }
+}
+
+async function finishBorrowerFlow(){
+  const { name, contact, address } = voiceFlow.data;
+  vcAddAssistantReply(
+    `Saving <strong>${name}</strong>${contact ? ' — ' + contact : ''}${address ? ', ' + address : ''}…`,
+    'New Borrower'
+  );
+
+  document.getElementById('borrower-modal-title').textContent = 'New Borrower';
+  document.getElementById('b-name').value = name;
+  document.getElementById('b-contact').value = contact;
+  document.getElementById('b-address').value = address;
+  delete document.getElementById('save-borrower').dataset.editId;
+
+  await new Promise(res => setTimeout(res, 600));
+  closeVoiceChat();
+  openModal('modal-borrower');
+  await new Promise(res => setTimeout(res, 400));
+  document.getElementById('save-borrower').click();
+  voiceFlow = null;
 }
 
 async function handleVoiceTranscript(transcript){
   vcFinalizeUserBubble(transcript);
   vcShowTyping();
 
+  if(voiceFlow){
+    await new Promise(res => setTimeout(res, 350));
+    await handleFlowAnswer(transcript);
+    return;
+  }
+
   // small delay so the "typing" bubble feels like a real reply, not an instant flash
   await new Promise(res => setTimeout(res, 380));
 
   const intent = detectVoiceIntent(transcript);
-  const amountInfo = extractVoiceAmount(transcript);
 
   if(!intent){
-    vcAddAssistantReply('I didn\'t catch a command. Try something like "log payment to Juan 500 pesos" or "new pautang for Maria 1000".');
+    vcAddAssistantReply('I didn\'t catch a command. Try something like "log payment to Juan 500 pesos", "new pautang for Maria 1000", or "new borrower".');
     return;
   }
+  if(intent === 'borrower'){
+    await startBorrowerFlow();
+    return;
+  }
+
+  const amountInfo = extractVoiceAmount(transcript);
   if(!amountInfo){
     vcAddAssistantReply("I heard you, but couldn't catch the amount. Try again and include a number, like \"500 pesos\".");
     return;
