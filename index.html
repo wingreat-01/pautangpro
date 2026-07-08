@@ -430,26 +430,68 @@ a{color:inherit;}
   100%{ box-shadow:0 0 0 0 rgba(168,60,52,0); }
 }
 
-.voice-caption{
-  position:absolute;
-  bottom:148px;
-  right:18px;
-  left:18px;
-  background:var(--ink);
-  color:var(--paper);
-  padding:10px 16px;
-  border-radius:14px;
-  font-size:15px;
-  text-align:center;
-  z-index:26;
-  display:none;
-  box-shadow:0 6px 20px rgba(0,0,0,0.3);
+/* ---------- Voice chat overlay (chat-style mic assistant) ---------- */
+.voice-chat-overlay{
+  position:absolute; inset:0; z-index:60;
+  background:rgba(15,20,22,0.55);
+  display:none; align-items:flex-end;
 }
-.voice-caption.show{ display:block; }
-.voice-caption .vc-label{
-  font-size:11.5px; letter-spacing:0.6px; text-transform:uppercase;
-  color:#7FBBA0; margin-bottom:2px; display:block;
+.voice-chat-overlay.show{ display:flex; }
+.voice-chat-sheet{
+  width:100%; max-height:76%;
+  background:var(--paper);
+  border-radius:20px 20px 0 0;
+  display:flex; flex-direction:column;
+  box-shadow:0 -8px 30px rgba(0,0,0,0.35);
+  animation: vc-slide-up 0.22s ease-out;
 }
+@keyframes vc-slide-up{ from{ transform:translateY(24px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
+.vc-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 8px 10px 18px; border-bottom:1px solid var(--paper-deep); flex-shrink:0;
+}
+.vc-header .vc-title{ font-weight:700; font-size:15.5px; color:var(--ink); display:flex; align-items:center; gap:8px; }
+.vc-close{
+  background:none; border:none; font-size:19px; color:var(--ink-soft); cursor:pointer; padding:8px 12px; line-height:1;
+}
+.vc-messages{
+  flex:1; overflow-y:auto; padding:16px 14px; display:flex; flex-direction:column; gap:10px;
+  min-height:140px;
+}
+.vc-msg{ max-width:82%; padding:10px 14px; border-radius:16px; font-size:14.5px; line-height:1.42; }
+.vc-msg.assistant{
+  align-self:flex-start; background:var(--paper-deep); color:var(--ink); border-bottom-left-radius:4px;
+}
+.vc-msg.user{
+  align-self:flex-end; background:var(--peso); color:#fff; border-bottom-right-radius:4px;
+}
+.vc-msg.user.interim{ opacity:0.62; }
+.vc-msg .vc-tag{
+  display:block; font-size:10.5px; letter-spacing:0.5px; text-transform:uppercase;
+  opacity:0.65; margin-bottom:3px;
+}
+.vc-typing{ display:flex; gap:4px; padding:5px 3px 2px; }
+.vc-typing span{
+  width:6px; height:6px; border-radius:50%; background:var(--ink-soft); opacity:0.5;
+  animation:vc-bounce 1s infinite;
+}
+.vc-typing span:nth-child(2){ animation-delay:0.15s; }
+.vc-typing span:nth-child(3){ animation-delay:0.3s; }
+@keyframes vc-bounce{
+  0%,60%,100%{ transform:translateY(0); opacity:0.4; }
+  30%{ transform:translateY(-4px); opacity:1; }
+}
+.vc-inputbar{
+  display:flex; align-items:center; gap:12px; padding:14px 18px calc(14px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--paper-deep); flex-shrink:0;
+}
+.vc-mic-btn{
+  width:52px; height:52px; border-radius:50%; border:none; background:var(--peso); color:#fff;
+  font-size:23px; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0;
+}
+.vc-mic-btn:active{ background:var(--peso-dark); }
+.vc-mic-btn.listening{ background:var(--red); animation:mic-pulse 1.3s infinite; }
+.vc-hint{ font-size:13px; color:var(--ink-soft); }
 </style>
 </head>
 <body>
@@ -635,10 +677,23 @@ a{color:inherit;}
     <button class="nav-btn" data-view="settings"><span class="ic">⚙</span><span class="lb">Settings</span></button>
   </div>
 
-  <div class="voice-caption" id="voice-caption"></div>
   <button class="mic-fab" id="mic-fab" style="display:none;" title="Voice log">
     <span id="mic-icon">🎙</span>
   </button>
+
+  <div class="voice-chat-overlay" id="voice-chat-overlay">
+    <div class="voice-chat-sheet">
+      <div class="vc-header">
+        <div class="vc-title">🎙 Voice Assistant</div>
+        <button class="vc-close" id="voice-chat-close">✕</button>
+      </div>
+      <div class="vc-messages" id="voice-chat-messages"></div>
+      <div class="vc-inputbar">
+        <button class="vc-mic-btn" id="voice-chat-mic" title="Tap to speak">🎙</button>
+        <div class="vc-hint" id="voice-chat-hint">Tap the mic and say a command, e.g. "log payment to Juan 500 pesos"</div>
+      </div>
+    </div>
+  </div>
 
   <!-- MODAL: New Borrower -->
   <div class="modal-overlay" id="modal-borrower">
@@ -1817,25 +1872,95 @@ function titleCase(str){
   return str.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1));
 }
 
-function showVoiceCaption(text){
-  const el = document.getElementById('voice-caption');
-  el.innerHTML = `<span class="vc-label">Listening</span>${text || '...'}`;
-  el.classList.add('show');
+/* ---------- Voice chat bubble helpers ---------- */
+let vcInterimEl = null; // the live "user is speaking" bubble, updated in place
+
+function vcMessagesEl(){ return document.getElementById('voice-chat-messages'); }
+
+function vcScrollToBottom(){
+  const el = vcMessagesEl();
+  el.scrollTop = el.scrollHeight;
 }
-function hideVoiceCaption(){
-  document.getElementById('voice-caption').classList.remove('show');
+
+function vcAddUserInterim(text){
+  const el = vcMessagesEl();
+  if(!vcInterimEl){
+    vcInterimEl = document.createElement('div');
+    vcInterimEl.className = 'vc-msg user interim';
+    el.appendChild(vcInterimEl);
+  }
+  vcInterimEl.textContent = text || '…';
+  vcScrollToBottom();
+}
+
+function vcFinalizeUserBubble(text){
+  if(vcInterimEl){
+    vcInterimEl.textContent = text;
+    vcInterimEl.classList.remove('interim');
+    vcInterimEl = null;
+  } else {
+    const el = vcMessagesEl();
+    const bubble = document.createElement('div');
+    bubble.className = 'vc-msg user';
+    bubble.textContent = text;
+    el.appendChild(bubble);
+  }
+  vcScrollToBottom();
+}
+
+function vcShowTyping(){
+  const el = vcMessagesEl();
+  const typing = document.createElement('div');
+  typing.className = 'vc-msg assistant';
+  typing.id = 'vc-typing-bubble';
+  typing.innerHTML = '<div class="vc-typing"><span></span><span></span><span></span></div>';
+  el.appendChild(typing);
+  vcScrollToBottom();
+  return typing;
+}
+
+function vcAddAssistantReply(text, tag){
+  const typingEl = document.getElementById('vc-typing-bubble');
+  const el = vcMessagesEl();
+  const bubble = typingEl || (()=>{ const b = document.createElement('div'); b.className='vc-msg assistant'; el.appendChild(b); return b; })();
+  bubble.removeAttribute('id');
+  bubble.innerHTML = (tag ? `<span class="vc-tag">${tag}</span>` : '') + text;
+  vcScrollToBottom();
+}
+
+function vcResetChat(){
+  vcInterimEl = null;
+  const el = vcMessagesEl();
+  el.innerHTML = '';
+  vcAddAssistantReply('Hi! Tap the mic and tell me what to log — e.g. "log payment to Juan 500 pesos" or "new pautang for Maria 1000".');
+}
+
+function openVoiceChat(){
+  document.getElementById('voice-chat-overlay').classList.add('show');
+  if(vcMessagesEl().children.length === 0) vcResetChat();
+}
+
+function closeVoiceChat(){
+  document.getElementById('voice-chat-overlay').classList.remove('show');
+  if(isListening) recognition.stop();
 }
 
 async function handleVoiceTranscript(transcript){
+  vcFinalizeUserBubble(transcript);
+  vcShowTyping();
+
+  // small delay so the "typing" bubble feels like a real reply, not an instant flash
+  await new Promise(res => setTimeout(res, 380));
+
   const intent = detectVoiceIntent(transcript);
   const amountInfo = extractVoiceAmount(transcript);
 
   if(!intent){
-    showToast('Try: "log payment to [name] [amount] pesos"');
+    vcAddAssistantReply('I didn\'t catch a command. Try something like "log payment to Juan 500 pesos" or "new pautang for Maria 1000".');
     return;
   }
   if(!amountInfo){
-    showToast("Didn't catch an amount — please try again");
+    vcAddAssistantReply("I heard you, but couldn't catch the amount. Try again and include a number, like \"500 pesos\".");
     return;
   }
   const spokenName = extractVoiceName(transcript, amountInfo.raw);
@@ -1843,11 +1968,11 @@ async function handleVoiceTranscript(transcript){
   const { borrower, score } = bestBorrowerMatch(spokenName, borrowers);
 
   if(!borrower){
-    showToast('Add a borrower first, then try voice logging');
+    vcAddAssistantReply('You don\'t have any borrowers yet — add one first, then try voice logging again.');
     return;
   }
   if(score < 0.35){
-    showToast(`Couldn't confidently match "${titleCase(spokenName)}" — please pick manually`);
+    vcAddAssistantReply(`I couldn't confidently match "${titleCase(spokenName)}" to a borrower — please pick manually from the form.`, 'Low confidence');
   }
 
   if(intent === 'payment'){
@@ -1858,17 +1983,21 @@ async function handleVoiceTranscript(transcript){
       if(status !== 'paid') openLoans.push(loan);
     }
     if(openLoans.length === 0){
-      showToast(`${borrower.name} has no active loan to pay`);
+      vcAddAssistantReply(`${borrower.name} has no active loan to pay right now.`);
       return;
     }
     openLoans.sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
+    vcAddAssistantReply(`Got it — payment of ₱${peso(amountInfo.value)} for ${borrower.name}. Opening the form so you can confirm.`, 'Payment');
+    await new Promise(res => setTimeout(res, 700));
+    closeVoiceChat();
     await openPaymentModal(openLoans[0].id);
     document.getElementById('p-amount').value = amountInfo.value.toFixed(2);
-    showToast(`Heard: pay ₱${peso(amountInfo.value)} to ${borrower.name} — confirm below`);
   } else if(intent === 'loan'){
+    vcAddAssistantReply(`Got it — new pautang of ₱${peso(amountInfo.value)} for ${borrower.name}. Opening the form so you can confirm.`, 'New Loan');
+    await new Promise(res => setTimeout(res, 700));
+    closeVoiceChat();
     await openLoanModal(borrower.id);
     document.getElementById('l-principal').value = amountInfo.value.toFixed(2);
-    showToast(`Heard: ₱${peso(amountInfo.value)} pautang for ${borrower.name} — confirm below`);
   }
 }
 
@@ -1879,6 +2008,10 @@ const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechReco
 
 function setupVoiceRecognition(){
   const micBtn = document.getElementById('mic-fab');
+  const chatMicBtn = document.getElementById('voice-chat-mic');
+  const closeBtn = document.getElementById('voice-chat-close');
+  const hint = document.getElementById('voice-chat-hint');
+
   if(!SpeechRecognitionAPI){
     micBtn.style.display = 'none';
     return;
@@ -1894,31 +2027,42 @@ function setupVoiceRecognition(){
   recognition.onstart = ()=>{
     isListening = true;
     micBtn.classList.add('listening');
-    showVoiceCaption('');
+    chatMicBtn.classList.add('listening');
+    hint.textContent = 'Listening…';
+    vcInterimEl = null;
   };
   recognition.onresult = (e)=>{
     let transcript = '';
     for(let i=0; i<e.results.length; i++){
       transcript += e.results[i][0].transcript;
     }
-    showVoiceCaption(transcript);
+    vcAddUserInterim(transcript);
     if(e.results[e.results.length-1].isFinal){
       handleVoiceTranscript(transcript);
     }
   };
   recognition.onerror = ()=>{
-    showToast("Didn't catch that — try again");
+    hint.textContent = 'Tap the mic and say a command, e.g. "log payment to Juan 500 pesos"';
+    if(vcMessagesEl().children.length) vcAddAssistantReply("Didn't catch that — tap the mic and try again.");
   };
   recognition.onend = ()=>{
     isListening = false;
     micBtn.classList.remove('listening');
-    setTimeout(hideVoiceCaption, 900);
+    chatMicBtn.classList.remove('listening');
+    hint.textContent = 'Tap the mic and say a command, e.g. "log payment to Juan 500 pesos"';
+  };
+
+  const startListening = ()=>{
+    if(isListening){ recognition.stop(); return; }
+    try{ recognition.start(); }catch(err){ /* already started */ }
   };
 
   micBtn.addEventListener('click', ()=>{
-    if(isListening){ recognition.stop(); return; }
-    try{ recognition.start(); }catch(err){ /* already started */ }
+    openVoiceChat();
+    startListening();
   });
+  chatMicBtn.addEventListener('click', startListening);
+  closeBtn.addEventListener('click', closeVoiceChat);
 }
 
 /* =========================================================
