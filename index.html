@@ -11,6 +11,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/jspdf.plugin.autotable.min.js"></script>
 <style>
 :root{
   --paper:#EFE9D8;
@@ -534,6 +537,7 @@ a{color:inherit;}
       <div class="detail-header screen" id="borrower-detail-header"></div>
       <div class="quick-actions screen">
         <div class="qa-btn" id="detail-new-loan"><span class="ic">✎</span><span class="tx">New Pautang</span></div>
+        <div class="qa-btn" id="detail-export-statement"><span class="ic">⬇</span><span class="tx">Statement PDF</span></div>
         <div class="qa-btn" id="detail-edit-borrower"><span class="ic">⚙</span><span class="tx">Edit Info</span></div>
       </div>
       <div class="section-label screen">Loan History</div>
@@ -588,6 +592,14 @@ a{color:inherit;}
       </div>
       <div class="section-label screen">Data</div>
       <div class="screen">
+        <div class="settings-item" id="settings-export-excel">
+          <div><div class="l">Export to Excel</div><div class="d">All borrowers, loans & payments as .xlsx</div></div>
+          <div class="chev">›</div>
+        </div>
+        <div class="settings-item" id="settings-export-pdf">
+          <div><div class="l">Export Ledger Report (PDF)</div><div class="d">Printable summary of all borrowers & balances</div></div>
+          <div class="chev">›</div>
+        </div>
         <div class="settings-item" id="settings-export">
           <div><div class="l">Backup to File</div><div class="d">Save all data as a JSON file</div></div>
           <div class="chev">›</div>
@@ -1820,6 +1832,195 @@ document.getElementById('settings-reminders-toggle').addEventListener('click', a
 
 document.getElementById('settings-check-now').addEventListener('click', ()=>{
   checkAndNotifyDueLoans(true);
+});
+
+/* =========================================================
+   EXPORT — EXCEL & PDF
+   Uses locally bundled SheetJS (xlsx) and jsPDF + autoTable —
+   no CDN dependency, works fully offline once the app is
+   installed/cached.
+   ========================================================= */
+
+async function exportToExcel(){
+  if(typeof XLSX === 'undefined'){ showToast('Excel export not available'); return; }
+  const borrowers = await idbGetAll('borrowers');
+  const loans = await idbGetAll('loans');
+  const payments = await idbGetAll('payments');
+
+  const borrowerRows = borrowers.map(b=>({
+    'Borrower ID': b.id, 'Name': b.name, 'Contact': b.contact||'', 'Address': b.address||'', 'Date Added': b.dateAdded||''
+  }));
+
+  const loanRows = [];
+  for(const loan of loans){
+    const borrower = borrowers.find(b=>b.id===loan.borrowerId);
+    const { total, paid, balance } = await loanBalance(loan);
+    const status = await loanStatus(loan);
+    loanRows.push({
+      'Loan ID': loan.id,
+      'Borrower': borrower ? borrower.name : 'Unknown',
+      'Principal': loan.principal,
+      'Interest Type': loan.interestType,
+      'Interest Rate (%)': loan.interestRate,
+      'Term (months)': loan.termMonths,
+      'Date Given': loan.dateGiven,
+      'Due Date': loan.dueDate,
+      'Total Payable': Number(total.toFixed(2)),
+      'Paid So Far': Number(paid.toFixed(2)),
+      'Balance': Number(balance.toFixed(2)),
+      'Status': status,
+      'Notes': loan.notes||''
+    });
+  }
+
+  const paymentRows = payments.map(p=>{
+    const loan = loans.find(l=>l.id===p.loanId);
+    const borrower = loan ? borrowers.find(b=>b.id===loan.borrowerId) : null;
+    return {
+      'Payment ID': p.id,
+      'Borrower': borrower ? borrower.name : 'Unknown',
+      'Loan ID': p.loanId,
+      'Amount': p.amount,
+      'Date Paid': p.datePaid,
+      'Method': p.method,
+      'Notes': p.notes||''
+    };
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(borrowerRows), 'Borrowers');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(loanRows), 'Loans');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paymentRows), 'Payments');
+  XLSX.writeFile(wb, `pautang-pro-export-${todayISO()}.xlsx`);
+  showToast('Excel file downloaded');
+}
+
+function newLedgerPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  return doc;
+}
+
+function pdfHeader(doc, title, subtitle){
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(18);
+  doc.setTextColor(30,42,46);
+  doc.text(title, 40, 46);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(10);
+  doc.setTextColor(75,90,87);
+  doc.text(subtitle, 40, 64);
+  doc.setDrawColor(216,208,184);
+  doc.line(40, 74, doc.internal.pageSize.getWidth()-40, 74);
+}
+
+async function exportLedgerReportPDF(){
+  if(typeof window.jspdf === 'undefined'){ showToast('PDF export not available'); return; }
+  const borrowers = await idbGetAll('borrowers');
+  const loans = await idbGetAll('loans');
+
+  const rows = [];
+  let grandTotalOut = 0;
+  for(const b of borrowers){
+    const bLoans = loans.filter(l=>l.borrowerId===b.id);
+    let totalLoaned=0, totalPaid=0, balanceSum=0;
+    let status = 'clear';
+    for(const loan of bLoans){
+      const { total, paid, balance } = await loanBalance(loan);
+      const lStatus = await loanStatus(loan);
+      totalLoaned += total; totalPaid += paid; balanceSum += balance;
+      if(lStatus === 'overdue') status = 'overdue';
+      else if(lStatus === 'active' && status !== 'overdue') status = 'active';
+    }
+    grandTotalOut += balanceSum;
+    if(bLoans.length > 0){
+      rows.push([b.name, b.contact||'—', `₱${peso(totalLoaned)}`, `₱${peso(totalPaid)}`, `₱${peso(balanceSum)}`, status]);
+    }
+  }
+  rows.sort((a,b)=>{
+    const av = parseFloat(a[4].replace(/[₱,]/g,''));
+    const bv = parseFloat(b[4].replace(/[₱,]/g,''));
+    return bv - av;
+  });
+
+  const doc = newLedgerPDF();
+  pdfHeader(doc, 'Pautang Pro — Ledger Report', `As of ${fmtDate(todayISO())} · Total Receivables: ₱${peso(grandTotalOut)}`);
+  doc.autoTable({
+    startY: 86,
+    head: [['Borrower','Contact','Total Loaned','Total Paid','Balance','Status']],
+    body: rows,
+    headStyles: { fillColor:[31,107,76], textColor:255, fontStyle:'bold' },
+    styles: { fontSize:9, cellPadding:6 },
+    alternateRowStyles: { fillColor:[247,244,235] }
+  });
+  doc.save(`pautang-pro-ledger-report-${todayISO()}.pdf`);
+  showToast('Ledger report PDF downloaded');
+}
+
+async function exportBorrowerStatementPDF(borrowerId){
+  if(typeof window.jspdf === 'undefined'){ showToast('PDF export not available'); return; }
+  const b = await idbGet('borrowers', borrowerId);
+  const loans = await idbGetByIndex('loans','borrowerId', borrowerId);
+  loans.sort((a,c)=> (a.dateGiven||'').localeCompare(c.dateGiven||''));
+
+  const doc = newLedgerPDF();
+  pdfHeader(doc, `Statement — ${b.name}`, `${b.contact||''}${b.address?(' · '+b.address):''}   ·   As of ${fmtDate(todayISO())}`);
+
+  let cursorY = 90;
+  let totalBalance = 0;
+
+  for(const loan of loans){
+    const { total, paid, balance } = await loanBalance(loan);
+    const status = await loanStatus(loan);
+    totalBalance += balance;
+    const interestLabel = loan.interestType==='none' ? 'No interest'
+      : loan.interestType==='flat' ? `${loan.interestRate}% flat`
+      : `${loan.interestRate}%/month × ${loan.termMonths}mo`;
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(30,42,46);
+    doc.text(`Pautang given ${fmtDate(loan.dateGiven)} — ₱${peso(loan.principal)} (${interestLabel})`, 40, cursorY);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(75,90,87);
+    doc.text(`Due ${fmtDate(loan.dueDate)}  ·  Total Payable ₱${peso(total)}  ·  Status: ${status.toUpperCase()}  ·  Balance ₱${peso(balance)}`, 40, cursorY+14);
+    cursorY += 24;
+
+    const payments = await idbGetByIndex('payments','loanId', loan.id);
+    payments.sort((a,c)=> (a.datePaid||'').localeCompare(c.datePaid||''));
+    if(payments.length){
+      doc.autoTable({
+        startY: cursorY,
+        head: [['Date Paid','Amount','Method']],
+        body: payments.map(p=>[fmtDate(p.datePaid), `₱${peso(p.amount)}`, p.method]),
+        headStyles: { fillColor:[169,134,47], textColor:255, fontSize:9, fontStyle:'bold' },
+        styles: { fontSize:9, cellPadding:5 },
+        margin: { left:40, right:40 },
+        tableWidth: doc.internal.pageSize.getWidth()-80
+      });
+      cursorY = doc.lastAutoTable.finalY + 20;
+    } else {
+      doc.setFontSize(9); doc.setTextColor(150,150,150);
+      doc.text('No payments logged yet.', 50, cursorY);
+      cursorY += 20;
+    }
+    if(cursorY > doc.internal.pageSize.getHeight() - 80){
+      doc.addPage();
+      cursorY = 50;
+    }
+  }
+
+  doc.setDrawColor(216,208,184);
+  doc.line(40, cursorY, doc.internal.pageSize.getWidth()-40, cursorY);
+  cursorY += 20;
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(22,78,56);
+  doc.text(`Total Outstanding Balance: ₱${peso(totalBalance)}`, 40, cursorY);
+
+  doc.save(`${b.name.replace(/\s+/g,'-')}-statement-${todayISO()}.pdf`);
+  showToast('Statement PDF downloaded');
+}
+
+document.getElementById('settings-export-excel').addEventListener('click', exportToExcel);
+document.getElementById('settings-export-pdf').addEventListener('click', exportLedgerReportPDF);
+document.getElementById('detail-export-statement').addEventListener('click', ()=>{
+  if(activeBorrowerId) exportBorrowerStatementPDF(activeBorrowerId);
 });
 
 /* =========================================================

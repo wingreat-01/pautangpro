@@ -19,7 +19,7 @@
 | §7 Flow | Reports screen (monthly collections, overdue, top borrowers) | ✅ Built — pulled in early from Week 3 |
 | §6 Architecture | Local-only decision locked in | ✅ Decided |
 | §4 Phase 2 | Voice logging (mic → parse → prefill modal) | ✅ Built — bonus feature, added ahead of plan |
-| §4 Phase 2 | Export to PDF/Excel | ⬜ Not started |
+| §4 Phase 2 | Export to PDF/Excel | ✅ Built — pulled in early from Phase 2 |
 | §4 Phase 2 | Cloud sync / shared account (Firebase) | ⬜ Discussed, not started |
 | §8 Play Store | PWA → TWA packaging (PWABuilder) | ⬜ Not started — waiting until app is feature-complete |
 | §8 Play Store | Play Console setup, privacy policy, store listing | ⬜ Not started |

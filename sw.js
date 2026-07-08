@@ -1,10 +1,13 @@
-const CACHE_NAME = 'pautang-pro-v1';
+const CACHE_NAME = 'pautang-pro-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './vendor/xlsx.full.min.js',
+  './vendor/jspdf.umd.min.js',
+  './vendor/jspdf.plugin.autotable.min.js'
 ];
 
 self.addEventListener('install', (event) => {
