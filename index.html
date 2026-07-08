@@ -1292,9 +1292,9 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
 /* ---------- Modal helpers ---------- */
 function openModal(id){ document.getElementById(id).classList.add('active'); }
 function closeModal(id){ document.getElementById(id).classList.remove('active'); }
-document.querySelectorAll('.modal-overlay').forEach(ov=>{
-  ov.addEventListener('click', (e)=>{ if(e.target === ov) ov.classList.remove('active'); });
-});
+// Note: intentionally no click-outside-to-close — a stray tap outside the
+// sheet (e.g. while filling in a loan/payment/borrower form) used to wipe
+// out whatever was already typed. Use the Cancel/✕ button in each modal instead.
 
 /* Radio chip groups */
 function wireRadioGroup(containerId){
