@@ -142,6 +142,7 @@ a{color:inherit;}
 }
 .pin-key:active{ background:#31423E; }
 .pin-key.wide{ grid-column:span 1; font-size:15px; color:#9FB0AC; }
+.pin-pad.locked{ opacity:0.4; pointer-events:none; }
 #pin-error{
   color:#E39A8F; font-size:14.5px; min-height:18px; margin-top:10px;
 }
@@ -254,6 +255,23 @@ a{color:inherit;}
 .tag-active{ background:var(--peso-tint); color:var(--peso-dark); }
 .tag-overdue{ background:var(--red-tint); color:var(--red); }
 .tag-paid{ background:#E7E3D3; color:var(--ink-soft); }
+
+/* Payment history (Loan Detail) — slightly larger text, and a
+   color-coded pill for the payment method: green for cash-in-hand,
+   blue for online/e-wallet methods (GCash, Maya, other). */
+#loan-payments-list .lr-main .name{ font-size:17.5px; }
+#loan-payments-list .lr-main .meta{ font-size:14.5px; }
+#loan-payments-list .lr-right .amt{ font-size:17.5px; }
+.pay-method-badge{
+  display:inline-block;
+  font-weight:700;
+  font-size:13px;
+  padding:2px 9px;
+  border-radius:20px;
+  letter-spacing:0.2px;
+}
+.pay-method-badge.method-cash{ background:var(--peso-tint); color:var(--peso-dark); }
+.pay-method-badge.method-online{ background:#DCE7F5; color:#1D4E89; }
 
 .empty-state{
   margin:30px 20px;
@@ -1204,6 +1222,71 @@ let pinMode = 'unlock'; // 'setup' | 'confirm' | 'unlock' | 'change-verify' | 'c
 let pendingNewPin = '';
 let changePinContext = false;
 
+/* Brute-force protection: after PIN_MAX_ATTEMPTS wrong tries in a row,
+   lock the pad for an escalating cooldown. Persisted in IndexedDB so
+   closing/reopening the app doesn't reset the timer. */
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_BASE_SECONDS = 30;
+const PIN_LOCKOUT_MAX_SECONDS = 300;
+let pinLocked = false;
+let pinLockoutInterval = null;
+
+async function getPinLockoutState(){
+  const rec = await idbGet('settings','pinLockout');
+  return rec ? rec.value : { failedAttempts:0, lockCount:0, lockedUntil:0 };
+}
+async function savePinLockoutState(state){
+  await idbPut('settings', { key:'pinLockout', value: state });
+}
+async function registerFailedPinAttempt(){
+  const state = await getPinLockoutState();
+  state.failedAttempts = (state.failedAttempts||0) + 1;
+  if(state.failedAttempts >= PIN_MAX_ATTEMPTS){
+    const seconds = Math.min(PIN_LOCKOUT_BASE_SECONDS * Math.pow(2, state.lockCount||0), PIN_LOCKOUT_MAX_SECONDS);
+    state.lockedUntil = Date.now() + seconds*1000;
+    state.lockCount = (state.lockCount||0) + 1;
+    state.failedAttempts = 0;
+  }
+  await savePinLockoutState(state);
+  return state;
+}
+async function clearPinLockoutState(){
+  await savePinLockoutState({ failedAttempts:0, lockCount:0, lockedUntil:0 });
+}
+async function applyPinLockoutState(){
+  const state = await getPinLockoutState();
+  if(pinLockoutInterval){ clearInterval(pinLockoutInterval); pinLockoutInterval = null; }
+  if(state.lockedUntil && Date.now() < state.lockedUntil){
+    startLockoutCountdown(state.lockedUntil);
+  } else {
+    pinLocked = false;
+    document.getElementById('pin-pad').classList.remove('locked');
+  }
+}
+function startLockoutCountdown(lockedUntil){
+  pinLocked = true;
+  pinBuffer = '';
+  renderPinDots();
+  document.getElementById('pin-pad').classList.add('locked');
+  const errEl = document.getElementById('pin-error');
+  const tick = ()=>{
+    const remaining = Math.max(0, Math.ceil((lockedUntil - Date.now())/1000));
+    if(remaining <= 0){
+      clearInterval(pinLockoutInterval);
+      pinLockoutInterval = null;
+      pinLocked = false;
+      document.getElementById('pin-pad').classList.remove('locked');
+      errEl.textContent = '';
+      return;
+    }
+    const mins = Math.floor(remaining/60);
+    const secs = String(remaining%60).padStart(2,'0');
+    errEl.textContent = `Too many attempts. Try again in ${mins}:${secs}.`;
+  };
+  tick();
+  pinLockoutInterval = setInterval(tick, 1000);
+}
+
 async function initPinScreen(){
   const settings = await idbGet('settings','pin');
   const instr = document.getElementById('pin-instruction');
@@ -1218,6 +1301,7 @@ async function initPinScreen(){
     modeLabel.textContent = '';
   }
   renderPinDots();
+  await applyPinLockoutState();
 }
 
 function renderPinDots(){
@@ -1228,6 +1312,7 @@ function renderPinDots(){
 }
 
 async function handlePinKey(k){
+  if(pinLocked) return;
   const errEl = document.getElementById('pin-error');
   if(k === 'clear'){ pinBuffer=''; errEl.textContent=''; renderPinDots(); return; }
   if(k === 'back'){ pinBuffer = pinBuffer.slice(0,-1); renderPinDots(); return; }
@@ -1270,11 +1355,18 @@ async function evaluatePinEntry(){
     const settings = await idbGet('settings','pin');
     if(settings && settings.value === simpleHash(entered)){
       errEl.textContent='';
+      await clearPinLockoutState();
       enterApp();
     } else {
-      errEl.textContent = 'Incorrect PIN. Try again.';
+      const state = await registerFailedPinAttempt();
       pinBuffer='';
       renderPinDots();
+      if(state.lockedUntil && Date.now() < state.lockedUntil){
+        startLockoutCountdown(state.lockedUntil);
+      } else {
+        const left = PIN_MAX_ATTEMPTS - state.failedAttempts;
+        errEl.textContent = `Incorrect PIN. ${left} ${left===1?'try':'tries'} left.`;
+      }
     }
     return;
   }
@@ -1286,10 +1378,17 @@ async function evaluatePinEntry(){
       errEl.textContent='';
       pinBuffer='';
       renderPinDots();
+      await clearPinLockoutState();
     } else {
-      errEl.textContent = 'Incorrect current PIN.';
+      const state = await registerFailedPinAttempt();
       pinBuffer='';
       renderPinDots();
+      if(state.lockedUntil && Date.now() < state.lockedUntil){
+        startLockoutCountdown(state.lockedUntil);
+      } else {
+        const left = PIN_MAX_ATTEMPTS - state.failedAttempts;
+        errEl.textContent = `Incorrect current PIN. ${left} ${left===1?'try':'tries'} left.`;
+      }
     }
     return;
   }
@@ -1311,6 +1410,49 @@ function enterApp(){
   pinBuffer='';
   refreshAll();
   checkAndNotifyDueLoans(false);
+}
+
+/* ---------- Auto-lock — re-prompt PIN after the app has spent a
+   while in the background, so a phone left unlocked/picked up by
+   someone else doesn't leave the ledger sitting open. ---------- */
+const AUTO_LOCK_MS = 60 * 1000; // re-lock after 1 minute backgrounded
+const AUTO_LOCK_STORAGE_KEY = 'pp_bgAt';
+
+function lockApp(){
+  if(typeof closeVoiceChat === 'function'){
+    try{ closeVoiceChat(); }catch(err){ /* no-op if nothing was listening */ }
+  }
+  document.getElementById('app').style.display='none';
+  document.getElementById('bottomnav').style.display='none';
+  pinMode = 'unlock';
+  pinBuffer = '';
+  document.getElementById('pin-instruction').textContent = 'Enter your PIN';
+  document.getElementById('pin-mode-label').textContent = '';
+  document.getElementById('pin-error').textContent = '';
+  renderPinDots();
+  document.getElementById('pin-screen').style.display='flex';
+  applyPinLockoutState();
+}
+
+async function checkAutoLock(){
+  const bgAt = Number(localStorage.getItem(AUTO_LOCK_STORAGE_KEY) || 0);
+  if(!bgAt) return;
+  localStorage.removeItem(AUTO_LOCK_STORAGE_KEY);
+  const appVisible = document.getElementById('app').style.display !== 'none';
+  if(!appVisible) return; // already at the PIN screen — nothing to do
+  if(Date.now() - bgAt < AUTO_LOCK_MS) return;
+  const settings = await idbGet('settings','pin');
+  if(settings) lockApp();
+}
+
+function initAutoLock(){
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden){
+      localStorage.setItem(AUTO_LOCK_STORAGE_KEY, String(Date.now()));
+    } else {
+      checkAutoLock();
+    }
+  });
 }
 
 document.getElementById('pin-pad').addEventListener('click', (e)=>{
@@ -1659,10 +1801,13 @@ async function openLoanDetail(loanId){
       const sigThumb = p.signature
         ? `<img class="sig-thumb" src="${p.signature}" data-date="${fmtDate(p.datePaid)}" alt="Signature">`
         : '';
+      const methodLabel = p.method.charAt(0).toUpperCase()+p.method.slice(1);
+      const methodClass = p.method === 'cash' ? 'method-cash' : 'method-online';
+      const methodBadge = `<span class="pay-method-badge ${methodClass}">${methodLabel}</span>`;
       row.innerHTML = `
         <div class="lr-main">
           <div class="name">${fmtDate(p.datePaid)}</div>
-          <div class="meta">${p.method.charAt(0).toUpperCase()+p.method.slice(1)}${p.notes?(' · '+p.notes):''}</div>
+          <div class="meta">${methodBadge}${p.notes?(' · '+p.notes):''}</div>
         </div>
         <div class="lr-right">
           <div class="amt mono" style="color:var(--peso-dark);">+₱${peso(p.amount)}</div>
@@ -1882,7 +2027,7 @@ document.getElementById('save-payment').addEventListener('click', async ()=>{
 /* =========================================================
    SETTINGS
    ========================================================= */
-document.getElementById('settings-change-pin').addEventListener('click', ()=>{
+document.getElementById('settings-change-pin').addEventListener('click', async ()=>{
   pinMode = 'change-verify';
   pinBuffer = '';
   document.getElementById('pin-instruction').textContent = 'Enter current PIN';
@@ -1891,6 +2036,7 @@ document.getElementById('settings-change-pin').addEventListener('click', ()=>{
   document.getElementById('app').style.display='none';
   document.getElementById('bottomnav').style.display='none';
   document.getElementById('pin-screen').style.display='flex';
+  await applyPinLockoutState();
 });
 
 document.getElementById('settings-export').addEventListener('click', async ()=>{
@@ -3252,6 +3398,7 @@ async function refreshAll(){
   await initPinScreen();
   setupVoiceRecognition();
   initSignaturePad();
+  initAutoLock();
 
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
