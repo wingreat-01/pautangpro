@@ -1801,7 +1801,8 @@ function renderInstallBanner(){
    pull out an intent, an amount, and a borrower name.
    ========================================================= */
 
-const BORROWER_TRIGGERS = ['new borrower','add borrower','register borrower','create borrower','new customer','add customer','bagong borrower','magparehistro'];
+const BORROWER_TRIGGERS = ['new borrower','add borrower','register borrower','create borrower','new customer','add customer','bagong borrower','magparehistro',
+  'bagong uutang','new record','new list','palagay ng pangalan','parecord','palista','ilista','irecord','palagay','borrower','record','new'];
 const PAYMENT_TRIGGERS = ['log payment','payment','pay ','nagbayad','magbayad','bayad'];
 const LOAN_TRIGGERS = ['new loan','new pautang','pautang','utang','nangutang','nagpautang','lend','loan'];
 
@@ -1812,12 +1813,24 @@ const VOICE_STOPWORDS = [
   'nangutang','nagpautang','lend','lending'
 ];
 
+// Longest-match-wins: some new borrower keywords ("new", "record", "bagong uutang")
+// are substrings of / overlap with loan & payment phrases ("new loan", "utang").
+// Scanning every trigger and keeping the longest one that matched keeps specific
+// phrases like "new loan" or "bagong uutang" resolving correctly instead of
+// always falling through to the generic "new" borrower trigger.
 function detectVoiceIntent(text){
   const t = ' ' + text.toLowerCase() + ' ';
-  for(const trig of BORROWER_TRIGGERS){ if(t.includes(trig)) return 'borrower'; }
-  for(const trig of PAYMENT_TRIGGERS){ if(t.includes(trig)) return 'payment'; }
-  for(const trig of LOAN_TRIGGERS){ if(t.includes(trig)) return 'loan'; }
-  return null;
+  const groups = [['borrower', BORROWER_TRIGGERS], ['payment', PAYMENT_TRIGGERS], ['loan', LOAN_TRIGGERS]];
+  let bestIntent = null, bestLen = 0;
+  for(const [intent, triggers] of groups){
+    for(const trig of triggers){
+      if(t.includes(trig) && trig.length > bestLen){
+        bestLen = trig.length;
+        bestIntent = intent;
+      }
+    }
+  }
+  return bestIntent;
 }
 
 function extractVoiceAmount(text){
@@ -2197,7 +2210,24 @@ async function handleVoiceTranscript(transcript){
 /* ---------- Speech recognition wiring ---------- */
 let recognition = null;
 let isListening = false;
+let finalTranscript = '';
+let silenceTimer = null;
+let maxListenTimer = null;
+const SILENCE_TIMEOUT_MS = 2500; // how long to wait after the user stops talking before ending
+const MAX_LISTEN_MS = 20000;     // hard cap so the mic can never get stuck open
 const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function clearListenTimers(){
+  if(silenceTimer){ clearTimeout(silenceTimer); silenceTimer = null; }
+  if(maxListenTimer){ clearTimeout(maxListenTimer); maxListenTimer = null; }
+}
+
+function resetSilenceTimer(){
+  if(silenceTimer) clearTimeout(silenceTimer);
+  silenceTimer = setTimeout(()=>{
+    if(isListening) recognition.stop();
+  }, SILENCE_TIMEOUT_MS);
+}
 
 function setupVoiceRecognition(){
   const micBtn = document.getElementById('mic-fab');
@@ -2214,35 +2244,45 @@ function setupVoiceRecognition(){
   recognition = new SpeechRecognitionAPI();
   recognition.lang = 'en-PH';
   recognition.interimResults = true;
-  recognition.continuous = false;
+  recognition.continuous = true; // keep listening across brief pauses; we control when it ends below
   recognition.maxAlternatives = 1;
 
   recognition.onstart = ()=>{
     isListening = true;
+    finalTranscript = '';
     micBtn.classList.add('listening');
     chatMicBtn.classList.add('listening');
     hint.textContent = 'Listening…';
     vcInterimEl = null;
+    resetSilenceTimer();
+    maxListenTimer = setTimeout(()=>{ if(isListening) recognition.stop(); }, MAX_LISTEN_MS);
   };
   recognition.onresult = (e)=>{
-    let transcript = '';
-    for(let i=0; i<e.results.length; i++){
-      transcript += e.results[i][0].transcript;
+    let interim = '';
+    for(let i=e.resultIndex; i<e.results.length; i++){
+      const chunk = e.results[i][0].transcript;
+      if(e.results[i].isFinal) finalTranscript += chunk + ' ';
+      else interim += chunk;
     }
-    vcAddUserInterim(transcript);
-    if(e.results[e.results.length-1].isFinal){
-      handleVoiceTranscript(transcript);
-    }
+    vcAddUserInterim((finalTranscript + interim).trim());
+    resetSilenceTimer(); // still talking — push the auto-stop deadline back
   };
-  recognition.onerror = ()=>{
+  recognition.onerror = (e)=>{
+    clearListenTimers();
     hint.textContent = 'Tap the mic and say a command, e.g. "log payment to Juan 500 pesos"';
-    if(vcMessagesEl().children.length) vcAddAssistantReply("Didn't catch that — tap the mic and try again.");
+    if(e.error !== 'no-speech' && vcMessagesEl().children.length){
+      vcAddAssistantReply("Didn't catch that — tap the mic and try again.");
+    }
   };
   recognition.onend = ()=>{
+    clearListenTimers();
     isListening = false;
     micBtn.classList.remove('listening');
     chatMicBtn.classList.remove('listening');
     hint.textContent = 'Tap the mic and say a command, e.g. "log payment to Juan 500 pesos"';
+    const transcript = finalTranscript.trim();
+    const panelOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
+    if(transcript && panelOpen) handleVoiceTranscript(transcript);
   };
 
   const startListening = ()=>{
@@ -2251,8 +2291,8 @@ function setupVoiceRecognition(){
   };
 
   micBtn.addEventListener('click', ()=>{
-    openVoiceChat();
     startListening();
+    openVoiceChat();
   });
   chatMicBtn.addEventListener('click', startListening);
   closeBtn.addEventListener('click', closeVoiceChat);
