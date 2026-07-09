@@ -5,7 +5,7 @@
 
 ## 🔨 Build Status (updated as we go)
 
-**Currently: Week 1–2 of the roadmap (Section 11) — MVP feature build is now complete. Every item in Section 3's core feature list is built.**
+**Currently: Week 1–2 of the roadmap (Section 11) — MVP feature build is complete, and several Phase 2 + packaging-prep items are done ahead of schedule.**
 
 | Plan section | Item | Status |
 |---|---|---|
@@ -13,21 +13,22 @@
 | §3 MVP | Loan entry (principal, interest type, term, due date) | ✅ Built |
 | §3 MVP | Payment logging + auto balance update | ✅ Built |
 | §3 MVP | Dashboard (total out, due today, overdue, needs-attention list) | ✅ Built |
-| §3 MVP | Reminders (local push notification) | ✅ Built |
-| §3 MVP | PIN/lock security | ✅ Built |
+| §3 MVP | Reminders (local push notification) | ✅ Built — Notification API on due/overdue, plus best-effort periodic background sync in the service worker so it can fire even if the app hasn't been opened recently |
+| §3 MVP | PIN/lock security | ✅ Built — 4-digit PIN screen with change-PIN flow in Settings |
 | §3 MVP | Offline-first (IndexedDB) | ✅ Built |
 | §7 Flow | Reports screen (monthly collections, overdue, top borrowers) | ✅ Built — pulled in early from Week 3 |
 | §6 Architecture | Local-only decision locked in | ✅ Decided |
-| §4 Phase 2 | Voice logging (mic → parse → prefill modal) | ✅ Built — bonus feature, added ahead of plan |
-| §4 Phase 2 | Export to PDF/Excel | ✅ Built — pulled in early from Phase 2 |
+| §4 Phase 2 | Voice logging | ✅ Built, and now more than the original plan — a full multi-turn guided voice assistant (not just a one-shot mic-to-prefill). Tap the mic and it asks step-by-step questions for **New Borrower** and **New Pautang** (borrower, principal, interest, term, notes), reads back a summary, and lets you say "edit" or "mali" to fix one field before saving. Recognizes both English and Tagalog trigger phrases (e.g. "new pautang," "hihiram," "manghihiram," "babale"), and listening now tolerates a natural pause (~5s) instead of cutting off mid-sentence |
+| §4 Phase 2 | Export to PDF/Excel | ✅ Built — full ledger export (PDF + Excel) from Settings, plus a per-borrower **Statement PDF** from the borrower detail screen |
 | §4 Phase 2 | Cloud sync / shared account (Firebase) | ✅ Built — email/password sign-in, Firestore mirror + last-write-wins sync across devices (single-account only, not multi-user staff logins yet) |
-| §8 Play Store | PWA → TWA packaging (PWABuilder) | ⬜ Not started — waiting until app is feature-complete |
-| §8 Play Store | Play Console setup, privacy policy, store listing | ⬜ Not started |
+| §8 Play Store | App icons, manifest.json, service worker | ✅ Built — 192/512/maskable icons, install manifest, and offline-caching service worker are all in place; this is groundwork for TWA packaging below, not the packaging itself |
+| §8 Play Store | PWA → TWA packaging (PWABuilder) | ⬜ Not started — install assets are ready, but the actual TWA wrap hasn't been done |
+| §8 Play Store | Play Console setup, privacy policy, store listing | ⬜ Not started — manifest also references 3 store screenshots that don't exist yet |
 | §12 Open decisions | Pricing model (one-time/freemium/subscription) | ⬜ Still open |
 | §12 Open decisions | Solo vs multi-user in v1 | ⬜ Still open |
-| §12 Open decisions | Export to PDF/Excel in MVP or Phase 2 | ⬜ Still open |
+| §12 Open decisions | Export to PDF/Excel in MVP or Phase 2 | ✅ Resolved by building it — see above |
 
-**MVP feature list (Section 3) is now fully built.** Next up per the roadmap is Week 3's remaining polish, then Week 4 packaging — see open decisions below before that.
+**MVP feature list (Section 3) is fully built, and most of Phase 2 (§4) is done too.** What's left before Play Store packaging (§8) is mostly non-code: pricing decision, multi-user decision, store screenshots, and the actual TWA wrap.
 
 ---
 
@@ -208,4 +209,4 @@ Given the target user (informal lenders, price-sensitive, subscription-averse), 
 - [x] **Local-only vs. cloud-backed from day one?** → **Local-only for v1.** All data in IndexedDB on-device, no backend, no per-user Apps Script deployment. Cloud sync/backup is a Phase 2 paid upgrade (likely via Firebase or Google Drive API, decided later).
 - [ ] One-time purchase vs. freemium vs. subscription?
 - [ ] Solo lender only, or multi-user/staff accounts in scope for v1?
-- [ ] Do you want export-to-PDF/Excel in MVP or Phase 2?
+- [x] **Export-to-PDF/Excel in MVP or Phase 2?** → Built already (full ledger export + per-borrower statement PDF), ahead of the original Phase 2 timing.

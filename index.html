@@ -370,6 +370,34 @@ a{color:inherit;}
 }
 .btn-danger{ color:var(--red); }
 
+.sig-optional{ font-weight:400; color:var(--ink-soft); font-size:12.5px; }
+.sig-pad-wrap{
+  position:relative; width:100%; height:150px;
+  border:1px solid var(--line); border-radius:8px; background:#fff;
+  touch-action:none; overflow:hidden;
+}
+.sig-pad-wrap canvas{ width:100%; height:100%; display:block; cursor:crosshair; }
+.sig-pad-placeholder{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  color:var(--line); font-size:14px; font-style:italic; pointer-events:none;
+}
+.sig-pad-placeholder.hidden{ display:none; }
+.sig-pad-actions{ display:flex; justify-content:flex-end; margin-top:6px; }
+.sig-clear-btn{
+  padding:6px 12px; border-radius:6px; border:1px solid var(--line); background:transparent;
+  color:var(--ink-soft); font-size:13px; font-family:inherit; cursor:pointer;
+}
+.sig-thumb{
+  width:46px; height:24px; object-fit:contain; margin-top:5px; padding:2px;
+  border:1px solid var(--line); border-radius:4px; background:#fff; cursor:pointer;
+  display:block; margin-left:auto;
+}
+.sig-view-frame{
+  background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px;
+}
+.sig-view-frame img{ width:100%; display:block; }
+.sig-view-date{ text-align:center; color:var(--ink-soft); font-size:13px; margin-top:10px; }
+
 .toast{
   position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
   background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:20px;
@@ -690,7 +718,7 @@ a{color:inherit;}
       <div class="vc-messages" id="voice-chat-messages"></div>
       <div class="vc-inputbar">
         <button class="vc-mic-btn" id="voice-chat-mic" title="Tap to speak">🎙</button>
-        <div class="vc-hint" id="voice-chat-hint">Tap the mic and say a command, e.g. "log payment to Juan 500 pesos"</div>
+        <div class="vc-hint" id="voice-chat-hint">Tap the mic and say a command, e.g. "log payment"</div>
       </div>
     </div>
   </div>
@@ -760,8 +788,31 @@ a{color:inherit;}
           <div class="radio-chip" data-v="other">Other</div>
         </div>
       </div>
+      <div class="field">
+        <label>Borrower's Signature <span class="sig-optional">(optional — proof of payment)</span></label>
+        <div class="sig-pad-wrap">
+          <canvas id="p-signature-canvas"></canvas>
+          <div class="sig-pad-placeholder" id="sig-pad-placeholder">Sign here</div>
+        </div>
+        <div class="sig-pad-actions">
+          <button type="button" class="sig-clear-btn" id="sig-clear-btn">Clear</button>
+        </div>
+      </div>
       <button class="btn-primary" id="save-payment">Save Payment</button>
       <button class="btn-secondary" id="cancel-payment">Cancel</button>
+    </div>
+  </div>
+
+  <!-- MODAL: View Signature -->
+  <div class="modal-overlay" id="modal-signature-view">
+    <div class="modal-sheet" style="max-width:420px;">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Signature</div>
+      <div class="sig-view-frame">
+        <img id="signature-view-img" alt="Borrower signature">
+      </div>
+      <div class="sig-view-date" id="signature-view-date"></div>
+      <button class="btn-secondary" id="close-signature-view">Close</button>
     </div>
   </div>
 
@@ -1313,6 +1364,94 @@ function getSelectedChip(containerId){
 }
 
 /* =========================================================
+   SIGNATURE PAD — borrower signs on the Log Payment modal
+   as day-of proof of payment. Plain canvas, mouse + touch,
+   stored as a compact PNG data URL on the payment record.
+   ========================================================= */
+let sigCanvas = null, sigCtx = null, sigDrawing = false, sigHasStrokes = false, sigLastPoint = null;
+
+function initSignaturePad(){
+  sigCanvas = document.getElementById('p-signature-canvas');
+  if(!sigCanvas) return;
+
+  const getPos = (e)=>{
+    const rect = sigCanvas.getBoundingClientRect();
+    const point = e.touches && e.touches.length ? e.touches[0] : e;
+    return { x: point.clientX - rect.left, y: point.clientY - rect.top };
+  };
+  const start = (e)=>{
+    e.preventDefault();
+    sigDrawing = true;
+    sigLastPoint = getPos(e);
+    const ph = document.getElementById('sig-pad-placeholder');
+    if(ph) ph.classList.add('hidden');
+  };
+  const move = (e)=>{
+    if(!sigDrawing) return;
+    e.preventDefault();
+    const p = getPos(e);
+    sigCtx.strokeStyle = '#1E2A2E';
+    sigCtx.lineWidth = 2.2;
+    sigCtx.lineCap = 'round';
+    sigCtx.lineJoin = 'round';
+    sigCtx.beginPath();
+    sigCtx.moveTo(sigLastPoint.x, sigLastPoint.y);
+    sigCtx.lineTo(p.x, p.y);
+    sigCtx.stroke();
+    sigLastPoint = p;
+    sigHasStrokes = true;
+  };
+  const end = ()=>{ sigDrawing = false; sigLastPoint = null; };
+
+  sigCanvas.addEventListener('mousedown', start);
+  sigCanvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  sigCanvas.addEventListener('touchstart', start, { passive:false });
+  sigCanvas.addEventListener('touchmove', move, { passive:false });
+  sigCanvas.addEventListener('touchend', end);
+  window.addEventListener('resize', ()=>{ if(sigCanvas.offsetParent) resizeSignatureCanvas(); });
+
+  document.getElementById('sig-clear-btn').addEventListener('click', clearSignaturePad);
+}
+
+function resizeSignatureCanvas(){
+  if(!sigCanvas) return;
+  const rect = sigCanvas.parentElement.getBoundingClientRect();
+  if(rect.width === 0 || rect.height === 0) return; // modal not visible yet
+  const ratio = window.devicePixelRatio || 1;
+  const prev = sigHasStrokes ? sigCanvas.toDataURL('image/png') : null;
+  sigCanvas.width = rect.width * ratio;
+  sigCanvas.height = rect.height * ratio;
+  sigCtx = sigCanvas.getContext('2d');
+  sigCtx.scale(ratio, ratio);
+  if(prev){
+    const img = new Image();
+    img.onload = ()=> sigCtx.drawImage(img, 0, 0, rect.width, rect.height);
+    img.src = prev;
+  }
+}
+
+function clearSignaturePad(){
+  if(!sigCanvas) return;
+  const rect = sigCanvas.getBoundingClientRect();
+  sigCtx.clearRect(0, 0, rect.width, rect.height);
+  sigHasStrokes = false;
+  const ph = document.getElementById('sig-pad-placeholder');
+  if(ph) ph.classList.remove('hidden');
+}
+
+function getSignatureDataUrl(){
+  return (sigCanvas && sigHasStrokes) ? sigCanvas.toDataURL('image/png') : '';
+}
+
+document.getElementById('close-signature-view').addEventListener('click', ()=> closeModal('modal-signature-view'));
+function openSignatureViewer(dataUrl, dateLabel){
+  document.getElementById('signature-view-img').src = dataUrl;
+  document.getElementById('signature-view-date').textContent = dateLabel ? `Signed on ${dateLabel}` : '';
+  openModal('modal-signature-view');
+}
+
+/* =========================================================
    DASHBOARD
    ========================================================= */
 async function renderDashboard(){
@@ -1494,6 +1633,9 @@ async function openLoanDetail(loanId){
     for(const p of payments){
       const row = document.createElement('div');
       row.className = 'ledger-row';
+      const sigThumb = p.signature
+        ? `<img class="sig-thumb" src="${p.signature}" data-date="${fmtDate(p.datePaid)}" alt="Signature">`
+        : '';
       row.innerHTML = `
         <div class="lr-main">
           <div class="name">${fmtDate(p.datePaid)}</div>
@@ -1501,11 +1643,16 @@ async function openLoanDetail(loanId){
         </div>
         <div class="lr-right">
           <div class="amt mono" style="color:var(--peso-dark);">+₱${peso(p.amount)}</div>
+          ${sigThumb}
         </div>
       `;
       listEl.appendChild(row);
     }
   }
+  listEl.onclick = (e)=>{
+    const thumb = e.target.closest('.sig-thumb');
+    if(thumb) openSignatureViewer(thumb.src, thumb.dataset.date);
+  };
   goToView('loan-detail');
 }
 document.getElementById('back-to-borrower-detail').addEventListener('click', ()=>{
@@ -1686,6 +1833,8 @@ async function openPaymentModal(preselectLoanId){
   [...document.getElementById('p-method').children].forEach(c=>c.classList.remove('selected'));
   document.getElementById('p-method').children[0].classList.add('selected');
   openModal('modal-payment');
+  clearSignaturePad();
+  requestAnimationFrame(resizeSignatureCanvas);
 }
 document.getElementById('qa-log-payment').addEventListener('click', ()=>openPaymentModal(null));
 document.getElementById('cancel-payment').addEventListener('click', ()=>closeModal('modal-payment'));
@@ -1695,11 +1844,13 @@ document.getElementById('save-payment').addEventListener('click', async ()=>{
   if(!amount || amount <= 0){ showToast('Enter a valid amount'); return; }
   const datePaid = document.getElementById('p-date').value || todayISO();
   const method = getSelectedChip('p-method');
-  const paymentRecord = { id: newRecordId(), loanId, amount, datePaid, method, notes:'', updatedAt: Date.now() };
+  const signature = getSignatureDataUrl();
+  const paymentRecord = { id: newRecordId(), loanId, amount, datePaid, method, notes:'', signature, updatedAt: Date.now() };
   await idbAdd('payments', paymentRecord);
   queueRecordSync('payments', paymentRecord);
   showToast('Payment logged');
   closeModal('modal-payment');
+  clearSignaturePad();
   renderDashboard();
   if(activeLoanId === loanId) openLoanDetail(loanId);
   else if(activeBorrowerId) openBorrowerDetail(activeBorrowerId);
@@ -1803,15 +1954,10 @@ function renderInstallBanner(){
 
 const BORROWER_TRIGGERS = ['new borrower','add borrower','register borrower','create borrower','new customer','add customer','bagong borrower','magparehistro',
   'bagong uutang','new record','new list','palagay ng pangalan','parecord','palista','ilista','irecord','palagay','borrower','record','new'];
-const PAYMENT_TRIGGERS = ['log payment','payment','pay ','nagbayad','magbayad','bayad'];
+const PAYMENT_TRIGGERS = ['log payment','save payment','record payment','payment','cash-in','cash in',
+  'bayad sa utang','bawas sa utang','magbabayad si','bayad ni','magbabayad','bawas','bayad','hulog',
+  'nagbayad','magbayad'];
 const PAUTANG_TRIGGERS = ['new pautang','pautang','uutang daw si','uutang','hihiram daw si','hihiram','manghihiram daw si','manghihiram','babale','pabale','new loan','loan','lend','borrowing'];
-
-const VOICE_STOPWORDS = [
-  'log','payment','payments','to','for','of','from','ni','kay','sa','si',
-  'peso','pesos','piso','php','a','an','the','loan','pautang','utang',
-  'new','add','record','please','pay','bayad','nagbayad','magbayad',
-  'nangutang','nagpautang','lend','lending'
-];
 
 // Longest-match-wins: some new borrower keywords ("new", "record", "bagong uutang")
 // are substrings of / overlap with pautang & payment phrases ("new pautang", "uutang").
@@ -1842,16 +1988,6 @@ function extractVoiceAmount(text){
   const numMatch = lower.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/);
   if(numMatch) return { value: parseFloat(numMatch[0].replace(/,/g,'')), raw: numMatch[0] };
   return null;
-}
-
-function extractVoiceName(text, amountRaw){
-  let t = ' ' + text.toLowerCase() + ' ';
-  if(amountRaw) t = t.split(amountRaw.toLowerCase()).join(' ');
-  VOICE_STOPWORDS.forEach(w=>{
-    t = t.replace(new RegExp('\\b'+w.trim()+'\\b','g'), ' ');
-  });
-  t = t.replace(/\s+/g,' ').trim();
-  return t;
 }
 
 function levenshtein(a,b){
@@ -1947,7 +2083,7 @@ function vcResetChat(){
   vcInterimEl = null;
   const el = vcMessagesEl();
   el.innerHTML = '';
-  vcAddAssistantReply('Hi! Tap the mic and tell me what to log — e.g. "log payment to Juan 500 pesos", "new pautang", or "new borrower".');
+  vcAddAssistantReply('Hi! Tap the mic and tell me what to log — e.g. "log payment", "new pautang", or "new borrower".');
 }
 
 function openVoiceChat(){
@@ -2033,8 +2169,22 @@ async function startPautangFlow(){
   autoListenNext();
 }
 
+const PAYMENT_FLOW_QUESTIONS = {
+  borrower: "Sure — who made this payment? Tell me the borrower's name.",
+  loanPick: 'Which loan is this for? Say the amount to pick one, or say "first" for the earliest due.',
+  amount: 'How much was paid?',
+  method: 'How did they pay — cash, GCash, Maya, or other?'
+};
+
+async function startPaymentFlow(){
+  voiceFlow = { type:'newPayment', step:'borrower', data:{}, correcting:false };
+  vcAddAssistantReply(PAYMENT_FLOW_QUESTIONS.borrower, 'Log Payment');
+  autoListenNext();
+}
+
 async function handleFlowAnswer(rawTranscript){
   if(voiceFlow.type === 'newPautang') return handlePautangFlowAnswer(rawTranscript);
+  if(voiceFlow.type === 'newPayment') return handlePaymentFlowAnswer(rawTranscript);
   return handleBorrowerFlowAnswer(rawTranscript);
 }
 
@@ -2368,6 +2518,209 @@ async function finishPautangFlow(){
   voiceFlow = null;
 }
 
+function paymentConfirmMessage(data){
+  const loanLine = data.loanPrincipal != null
+    ? `₱${peso(data.loanPrincipal)} (due ${fmtDate(data.loanDueDate)})`
+    : '(only loan)';
+  return `Here's what I got:<br>`
+    + `<strong>Borrower:</strong> ${data.borrowerName}<br>`
+    + `<strong>Loan:</strong> ${loanLine}<br>`
+    + `<strong>Amount Paid:</strong> ₱${peso(data.amount)}<br>`
+    + `<strong>Method:</strong> ${titleCase(data.method)}<br><br>`
+    + `Should I save this? Say "yes" to save, or tell me the fix — e.g. "amount is 300".`;
+}
+
+async function handlePaymentFlowAnswer(rawTranscript){
+  const value = rawTranscript.trim();
+  const lower = value.toLowerCase();
+
+  if(/^(cancel|stop|never\s*mind|forget\s*it|huwag\s*na)\.?$/i.test(value)){
+    vcAddAssistantReply('Okay, cancelled — no payment was logged.');
+    voiceFlow = null;
+    return;
+  }
+
+  const step = voiceFlow.step;
+
+  if(step === 'borrower'){
+    if(!value){
+      vcAddAssistantReply("I need a name to continue — who made this payment?");
+      autoListenNext();
+      return;
+    }
+    const borrowers = await idbGetAll('borrowers');
+    const { borrower, score } = bestBorrowerMatch(value.toLowerCase(), borrowers);
+    if(!borrower){
+      vcAddAssistantReply("I couldn't find that borrower — say the name again, or add them as a borrower first.");
+      autoListenNext();
+      return;
+    }
+    const loans = await idbGetByIndex('loans','borrowerId', borrower.id);
+    const openLoans = [];
+    for(const loan of loans){
+      const status = await loanStatus(loan);
+      if(status !== 'paid') openLoans.push(loan);
+    }
+    if(openLoans.length === 0){
+      vcAddAssistantReply(`${borrower.name} has no active loan to pay right now.`);
+      voiceFlow = null;
+      return;
+    }
+    openLoans.sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
+    voiceFlow.data.borrowerId = borrower.id;
+    voiceFlow.data.borrowerName = borrower.name;
+    voiceFlow.data.openLoans = openLoans;
+
+    const lowConfidenceNote = score < 0.35 ? `I'm not fully sure, but I'll go with <strong>${borrower.name}</strong>.<br><br>` : '';
+
+    if(openLoans.length === 1){
+      voiceFlow.data.loanId = openLoans[0].id;
+      voiceFlow.data.loanPrincipal = openLoans[0].principal;
+      voiceFlow.data.loanDueDate = openLoans[0].dueDate;
+      if(voiceFlow.correcting){
+        voiceFlow.correcting = false;
+        voiceFlow.step = 'confirm';
+        vcAddAssistantReply(lowConfidenceNote + paymentConfirmMessage(voiceFlow.data), 'Confirm');
+      } else {
+        voiceFlow.step = 'amount';
+        vcAddAssistantReply(lowConfidenceNote + `${borrower.name} — ${PAYMENT_FLOW_QUESTIONS.amount}`);
+      }
+    } else {
+      voiceFlow.step = 'loanPick';
+      const list = openLoans.map((l,i)=> `${i+1}. ₱${peso(l.principal)} (due ${fmtDate(l.dueDate)})`).join('<br>');
+      vcAddAssistantReply(lowConfidenceNote + `${borrower.name} has ${openLoans.length} active loans:<br>${list}<br><br>${PAYMENT_FLOW_QUESTIONS.loanPick}`);
+    }
+    autoListenNext();
+  } else if(step === 'loanPick'){
+    const openLoans = voiceFlow.data.openLoans || [];
+    let picked = null;
+    if(/\b(first|earliest|oldest|unang)\b/i.test(lower)){
+      picked = openLoans[0];
+    } else {
+      const amt = extractVoiceAmount(value);
+      if(amt) picked = openLoans.find(l => Math.round(l.principal) === Math.round(amt.value));
+      if(!picked){
+        const numMatch = value.match(/\d+/);
+        if(numMatch){
+          const idx = parseInt(numMatch[0],10) - 1;
+          if(openLoans[idx]) picked = openLoans[idx];
+        }
+      }
+    }
+    if(!picked){
+      vcAddAssistantReply('I couldn\'t match that to one of the loans — try the amount, like "5000", or say "first".');
+      autoListenNext();
+      return;
+    }
+    voiceFlow.data.loanId = picked.id;
+    voiceFlow.data.loanPrincipal = picked.principal;
+    voiceFlow.data.loanDueDate = picked.dueDate;
+    if(voiceFlow.correcting){
+      voiceFlow.correcting = false;
+      voiceFlow.step = 'confirm';
+      vcAddAssistantReply(paymentConfirmMessage(voiceFlow.data), 'Confirm');
+    } else {
+      voiceFlow.step = 'amount';
+      vcAddAssistantReply(PAYMENT_FLOW_QUESTIONS.amount);
+    }
+    autoListenNext();
+  } else if(step === 'amount'){
+    const amt = extractVoiceAmount(value);
+    if(!amt || !amt.value){
+      vcAddAssistantReply('I need a valid amount — how much was paid? e.g. "500" or "1k".');
+      autoListenNext();
+      return;
+    }
+    voiceFlow.data.amount = amt.value;
+    if(voiceFlow.correcting){
+      voiceFlow.correcting = false;
+      voiceFlow.step = 'confirm';
+      vcAddAssistantReply(paymentConfirmMessage(voiceFlow.data), 'Confirm');
+    } else {
+      voiceFlow.step = 'method';
+      vcAddAssistantReply(PAYMENT_FLOW_QUESTIONS.method);
+    }
+    autoListenNext();
+  } else if(step === 'method'){
+    let method = 'cash';
+    if(/gcash/i.test(lower)) method = 'gcash';
+    else if(/maya/i.test(lower)) method = 'maya';
+    else if(/other/i.test(lower)) method = 'other';
+    else if(/cash/i.test(lower)) method = 'cash';
+    voiceFlow.data.method = method;
+    voiceFlow.correcting = false;
+    voiceFlow.step = 'confirm';
+    vcAddAssistantReply(paymentConfirmMessage(voiceFlow.data), 'Confirm');
+    autoListenNext();
+  } else if(step === 'confirm'){
+    const mentionsField = /\b(borrower|loan|amount|method|cash|gcash|maya)\b/i.test(lower);
+
+    if(!mentionsField && /\b(yes|yep|yeah|yup|oo|opo|tama|correct|confirmed?|save|go ahead)\b/i.test(lower)){
+      await finishPaymentFlow();
+      return;
+    }
+    if(/\bborrower\b/i.test(lower)){
+      voiceFlow.step = 'borrower';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply("Okay — who's the correct borrower?");
+      autoListenNext();
+      return;
+    }
+    if(/\bloan\b/i.test(lower)){
+      if((voiceFlow.data.openLoans||[]).length > 1){
+        voiceFlow.step = 'loanPick';
+        voiceFlow.correcting = true;
+        const list = voiceFlow.data.openLoans.map((l,i)=> `${i+1}. ₱${peso(l.principal)} (due ${fmtDate(l.dueDate)})`).join('<br>');
+        vcAddAssistantReply(`Which loan is this for?<br>${list}`);
+      } else {
+        vcAddAssistantReply(`${voiceFlow.data.borrowerName} only has one active loan, so that's the one I'll use.<br><br>` + paymentConfirmMessage(voiceFlow.data), 'Confirm');
+      }
+      autoListenNext();
+      return;
+    }
+    if(/\bamount\b/i.test(lower)){
+      voiceFlow.step = 'amount';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply("Okay — what's the correct amount paid?");
+      autoListenNext();
+      return;
+    }
+    if(/\b(method|cash|gcash|maya)\b/i.test(lower)){
+      voiceFlow.step = 'method';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply(PAYMENT_FLOW_QUESTIONS.method);
+      autoListenNext();
+      return;
+    }
+    if(/\b(no|nope|hindi|mali|wrong|edit)\b/i.test(lower)){
+      vcAddAssistantReply('No problem — what should I fix? Say "borrower", "loan", "amount", or "method".');
+      autoListenNext();
+      return;
+    }
+    vcAddAssistantReply('Sorry, didn\'t catch that — say "yes" to save, or name a field like "amount" or "method" to fix it.');
+    autoListenNext();
+  }
+}
+
+async function finishPaymentFlow(){
+  const { loanId, amount, method, borrowerName } = voiceFlow.data;
+  vcAddAssistantReply(
+    `Saving payment of ₱${peso(amount)} from <strong>${borrowerName}</strong>…`,
+    'Log Payment'
+  );
+
+  await new Promise(res => setTimeout(res, 600));
+  closeVoiceChat();
+  await openPaymentModal(loanId);
+  document.getElementById('p-amount').value = amount.toFixed(2);
+  [...document.getElementById('p-method').children].forEach(c=>{
+    c.classList.toggle('selected', c.dataset.v === method);
+  });
+  await new Promise(res => setTimeout(res, 400));
+  document.getElementById('save-payment').click();
+  voiceFlow = null;
+}
+
 async function handleVoiceTranscript(transcript){
   vcFinalizeUserBubble(transcript);
   vcShowTyping();
@@ -2384,7 +2737,7 @@ async function handleVoiceTranscript(transcript){
   const intent = detectVoiceIntent(transcript);
 
   if(!intent){
-    vcAddAssistantReply('I didn\'t catch a command. Try something like "log payment to Juan 500 pesos", "new pautang", or "new borrower".');
+    vcAddAssistantReply('I didn\'t catch a command. Try something like "log payment", "new pautang", or "new borrower".');
     autoListenNext();
     return;
   }
@@ -2396,44 +2749,9 @@ async function handleVoiceTranscript(transcript){
     await startPautangFlow();
     return;
   }
-
-  const amountInfo = extractVoiceAmount(transcript);
-  if(!amountInfo){
-    vcAddAssistantReply("I heard you, but couldn't catch the amount. Try again and include a number, like \"500 pesos\".");
-    autoListenNext();
-    return;
-  }
-  const spokenName = extractVoiceName(transcript, amountInfo.raw);
-  const borrowers = await idbGetAll('borrowers');
-  const { borrower, score } = bestBorrowerMatch(spokenName, borrowers);
-
-  if(!borrower){
-    vcAddAssistantReply('You don\'t have any borrowers yet — add one first, then try voice logging again.');
-    autoListenNext();
-    return;
-  }
-  if(score < 0.35){
-    vcAddAssistantReply(`I couldn't confidently match "${titleCase(spokenName)}" to a borrower — please pick manually from the form.`, 'Low confidence');
-  }
-
   if(intent === 'payment'){
-    const loans = await idbGetByIndex('loans','borrowerId', borrower.id);
-    const openLoans = [];
-    for(const loan of loans){
-      const status = await loanStatus(loan);
-      if(status !== 'paid') openLoans.push(loan);
-    }
-    if(openLoans.length === 0){
-      vcAddAssistantReply(`${borrower.name} has no active loan to pay right now.`);
-      autoListenNext();
-      return;
-    }
-    openLoans.sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
-    vcAddAssistantReply(`Got it — payment of ₱${peso(amountInfo.value)} for ${borrower.name}. Opening the form so you can confirm.`, 'Payment');
-    await new Promise(res => setTimeout(res, 700));
-    closeVoiceChat();
-    await openPaymentModal(openLoans[0].id);
-    document.getElementById('p-amount').value = amountInfo.value.toFixed(2);
+    await startPaymentFlow();
+    return;
   }
 }
 
@@ -2499,7 +2817,7 @@ function setupVoiceRecognition(){
   };
   recognition.onerror = (e)=>{
     clearListenTimers();
-    hint.textContent = 'Tap the mic and say a command, e.g. "log payment to Juan 500 pesos"';
+    hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
     if(e.error !== 'no-speech' && vcMessagesEl().children.length){
       vcAddAssistantReply("Didn't catch that — tap the mic and try again.");
     }
@@ -2509,7 +2827,7 @@ function setupVoiceRecognition(){
     isListening = false;
     micBtn.classList.remove('listening');
     chatMicBtn.classList.remove('listening');
-    hint.textContent = 'Tap the mic and say a command, e.g. "log payment to Juan 500 pesos"';
+    hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
     const transcript = finalTranscript.trim();
     const panelOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
     if(transcript && panelOpen) handleVoiceTranscript(transcript);
@@ -2732,7 +3050,8 @@ async function exportToExcel(){
       'Amount': p.amount,
       'Date Paid': p.datePaid,
       'Method': p.method,
-      'Notes': p.notes||''
+      'Notes': p.notes||'',
+      'Signed': p.signature ? 'Yes' : 'No'
     };
   });
 
@@ -2837,14 +3156,37 @@ async function exportBorrowerStatementPDF(borrowerId){
     if(payments.length){
       doc.autoTable({
         startY: cursorY,
-        head: [['Date Paid','Amount','Method']],
-        body: payments.map(p=>[fmtDate(p.datePaid), `₱${peso(p.amount)}`, p.method]),
+        head: [['Date Paid','Amount','Method','Signed']],
+        body: payments.map(p=>[fmtDate(p.datePaid), `₱${peso(p.amount)}`, p.method, p.signature ? 'Yes' : '—']),
         headStyles: { fillColor:[169,134,47], textColor:255, fontSize:9, fontStyle:'bold' },
         styles: { fontSize:9, cellPadding:5 },
         margin: { left:40, right:40 },
         tableWidth: doc.internal.pageSize.getWidth()-80
       });
-      cursorY = doc.lastAutoTable.finalY + 20;
+      cursorY = doc.lastAutoTable.finalY + 16;
+
+      const signedPayments = payments.filter(p=>p.signature);
+      if(signedPayments.length){
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const sigW = 76, sigH = 30, gap = 12;
+        if(cursorY + sigH + 24 > pageH - 60){ doc.addPage(); cursorY = 50; }
+        doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(75,90,87);
+        doc.text('Signatures on file:', 40, cursorY);
+        cursorY += 8;
+        let sigX = 40;
+        for(const p of signedPayments){
+          if(sigX + sigW > pageW - 40){ sigX = 40; cursorY += sigH + 18; }
+          if(cursorY + sigH + 18 > pageH - 60){ doc.addPage(); cursorY = 50; sigX = 40; }
+          try{ doc.addImage(p.signature, 'PNG', sigX, cursorY, sigW, sigH); }catch(err){ /* skip if malformed */ }
+          doc.setDrawColor(216,208,184);
+          doc.rect(sigX, cursorY, sigW, sigH);
+          doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(120,120,120);
+          doc.text(fmtDate(p.datePaid), sigX, cursorY + sigH + 10);
+          sigX += sigW + gap;
+        }
+        cursorY += sigH + 24;
+      }
     } else {
       doc.setFontSize(9); doc.setTextColor(150,150,150);
       doc.text('No payments logged yet.', 50, cursorY);
@@ -2886,6 +3228,7 @@ async function refreshAll(){
   db = await openDB();
   await initPinScreen();
   setupVoiceRecognition();
+  initSignaturePad();
 
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
