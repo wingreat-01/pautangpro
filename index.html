@@ -1804,7 +1804,7 @@ function renderInstallBanner(){
 const BORROWER_TRIGGERS = ['new borrower','add borrower','register borrower','create borrower','new customer','add customer','bagong borrower','magparehistro',
   'bagong uutang','new record','new list','palagay ng pangalan','parecord','palista','ilista','irecord','palagay','borrower','record','new'];
 const PAYMENT_TRIGGERS = ['log payment','payment','pay ','nagbayad','magbayad','bayad'];
-const LOAN_TRIGGERS = ['new loan','new pautang','pautang','utang','nangutang','nagpautang','lend','loan'];
+const PAUTANG_TRIGGERS = ['new pautang','pautang','uutang daw si','uutang','hihiram daw si','hihiram','manghihiram daw si','manghihiram','babale','pabale','new loan','loan','lend','borrowing'];
 
 const VOICE_STOPWORDS = [
   'log','payment','payments','to','for','of','from','ni','kay','sa','si',
@@ -1814,13 +1814,13 @@ const VOICE_STOPWORDS = [
 ];
 
 // Longest-match-wins: some new borrower keywords ("new", "record", "bagong uutang")
-// are substrings of / overlap with loan & payment phrases ("new loan", "utang").
+// are substrings of / overlap with pautang & payment phrases ("new pautang", "uutang").
 // Scanning every trigger and keeping the longest one that matched keeps specific
-// phrases like "new loan" or "bagong uutang" resolving correctly instead of
+// phrases like "new pautang" or "bagong uutang" resolving correctly instead of
 // always falling through to the generic "new" borrower trigger.
 function detectVoiceIntent(text){
   const t = ' ' + text.toLowerCase() + ' ';
-  const groups = [['borrower', BORROWER_TRIGGERS], ['payment', PAYMENT_TRIGGERS], ['loan', LOAN_TRIGGERS]];
+  const groups = [['borrower', BORROWER_TRIGGERS], ['payment', PAYMENT_TRIGGERS], ['pautang', PAUTANG_TRIGGERS]];
   let bestIntent = null, bestLen = 0;
   for(const [intent, triggers] of groups){
     for(const trig of triggers){
@@ -1947,7 +1947,7 @@ function vcResetChat(){
   vcInterimEl = null;
   const el = vcMessagesEl();
   el.innerHTML = '';
-  vcAddAssistantReply('Hi! Tap the mic and tell me what to log — e.g. "log payment to Juan 500 pesos", "new pautang for Maria 1000", or "new borrower".');
+  vcAddAssistantReply('Hi! Tap the mic and tell me what to log — e.g. "log payment to Juan 500 pesos", "new pautang", or "new borrower".');
 }
 
 function openVoiceChat(){
@@ -2013,7 +2013,32 @@ async function startBorrowerFlow(){
   autoListenNext();
 }
 
+const PAUTANG_FLOW_QUESTIONS = {
+  borrower: "Who's this pautang for? Tell me the borrower's name.",
+  principal: 'How much is the principal amount?',
+  interest: 'Any interest? Say "none", "flat", or "monthly".',
+  rate: "What's the interest rate percent?",
+  term: 'How many months is the term?',
+  notes: 'Any notes? Say "skip" if none.'
+};
+
+async function startPautangFlow(){
+  const borrowers = await idbGetAll('borrowers');
+  if(borrowers.length === 0){
+    vcAddAssistantReply('You don\'t have any borrowers yet — add one first, then try a pautang again.');
+    return;
+  }
+  voiceFlow = { type:'newPautang', step:'borrower', data:{}, correcting:false };
+  vcAddAssistantReply(PAUTANG_FLOW_QUESTIONS.borrower, 'New Pautang');
+  autoListenNext();
+}
+
 async function handleFlowAnswer(rawTranscript){
+  if(voiceFlow.type === 'newPautang') return handlePautangFlowAnswer(rawTranscript);
+  return handleBorrowerFlowAnswer(rawTranscript);
+}
+
+async function handleBorrowerFlowAnswer(rawTranscript){
   const value = rawTranscript.trim();
   const lower = value.toLowerCase();
 
@@ -2109,7 +2134,7 @@ async function handleFlowAnswer(rawTranscript){
       autoListenNext();
       return;
     }
-    if(/\b(no|nope|hindi|mali|wrong)\b/i.test(lower)){
+    if(/\b(no|nope|hindi|mali|wrong|edit)\b/i.test(lower)){
       vcAddAssistantReply('No problem — what should I fix? Say "name", "contact", or "address" — you can also just say the correct value in the same breath, e.g. "contact is 0917 123 4567".');
       autoListenNext();
       return;
@@ -2140,6 +2165,209 @@ async function finishBorrowerFlow(){
   voiceFlow = null;
 }
 
+function pautangConfirmMessage(data){
+  const interestLine = data.interestType === 'none'
+    ? 'None'
+    : `${data.interestType === 'flat' ? 'Flat' : '% / month'} — ${data.rate || 0}%`;
+  return `Here's what I got:<br>`
+    + `<strong>Borrower:</strong> ${data.borrowerName}<br>`
+    + `<strong>Principal:</strong> ₱${peso(data.principal)}<br>`
+    + `<strong>Interest:</strong> ${interestLine}<br>`
+    + `<strong>Term:</strong> ${data.term} month${data.term === 1 ? '' : 's'}<br>`
+    + `<strong>Notes:</strong> ${data.notes || '(none)'}<br><br>`
+    + `Should I save this? Say "yes" to save, or tell me the fix — e.g. "term is 3 months".`;
+}
+
+async function handlePautangFlowAnswer(rawTranscript){
+  const value = rawTranscript.trim();
+  const lower = value.toLowerCase();
+
+  if(/^(cancel|stop|never\s*mind|forget\s*it|huwag\s*na)\.?$/i.test(value)){
+    vcAddAssistantReply('Okay, cancelled — no pautang was added.');
+    voiceFlow = null;
+    return;
+  }
+
+  const skip = /^(skip|wala|none|walang|wala\s*po)\.?$/i.test(value);
+  const step = voiceFlow.step;
+
+  if(step === 'borrower'){
+    if(!value){
+      vcAddAssistantReply("I need a name to continue — who's this pautang for?");
+      autoListenNext();
+      return;
+    }
+    const borrowers = await idbGetAll('borrowers');
+    const { borrower, score } = bestBorrowerMatch(value.toLowerCase(), borrowers);
+    if(!borrower){
+      vcAddAssistantReply("I couldn't find that borrower — say the name again, or add them as a borrower first.");
+      autoListenNext();
+      return;
+    }
+    voiceFlow.data.borrowerId = borrower.id;
+    voiceFlow.data.borrowerName = borrower.name;
+    const lowConfidenceNote = score < 0.35 ? `I'm not fully sure, but I'll go with <strong>${borrower.name}</strong>.<br><br>` : '';
+    if(voiceFlow.correcting){
+      voiceFlow.correcting = false;
+      voiceFlow.step = 'confirm';
+      vcAddAssistantReply(lowConfidenceNote + pautangConfirmMessage(voiceFlow.data), 'Confirm');
+    } else {
+      voiceFlow.step = 'principal';
+      vcAddAssistantReply(lowConfidenceNote + `${borrower.name} — ${PAUTANG_FLOW_QUESTIONS.principal}`);
+    }
+    autoListenNext();
+  } else if(step === 'principal'){
+    const amt = extractVoiceAmount(value);
+    if(!amt || !amt.value){
+      vcAddAssistantReply('I need a valid amount — how much is the principal? e.g. "5000" or "5k".');
+      autoListenNext();
+      return;
+    }
+    voiceFlow.data.principal = amt.value;
+    if(voiceFlow.correcting){
+      voiceFlow.correcting = false;
+      voiceFlow.step = 'confirm';
+      vcAddAssistantReply(pautangConfirmMessage(voiceFlow.data), 'Confirm');
+    } else {
+      voiceFlow.step = 'interest';
+      vcAddAssistantReply(PAUTANG_FLOW_QUESTIONS.interest);
+    }
+    autoListenNext();
+  } else if(step === 'interest'){
+    let interestType = 'none';
+    if(/flat/i.test(lower)) interestType = 'flat';
+    else if(/month/i.test(lower)) interestType = 'monthly';
+    voiceFlow.data.interestType = interestType;
+    if(interestType === 'none'){
+      voiceFlow.data.rate = 0;
+      if(voiceFlow.correcting){
+        voiceFlow.correcting = false;
+        voiceFlow.step = 'confirm';
+        vcAddAssistantReply(pautangConfirmMessage(voiceFlow.data), 'Confirm');
+      } else {
+        voiceFlow.step = 'term';
+        vcAddAssistantReply(PAUTANG_FLOW_QUESTIONS.term);
+      }
+    } else {
+      // correcting flag (if any) carries through so the rate step returns to confirm afterward
+      voiceFlow.step = 'rate';
+      vcAddAssistantReply(PAUTANG_FLOW_QUESTIONS.rate);
+    }
+    autoListenNext();
+  } else if(step === 'rate'){
+    const amt = extractVoiceAmount(value);
+    voiceFlow.data.rate = amt ? amt.value : 0;
+    if(voiceFlow.correcting){
+      voiceFlow.correcting = false;
+      voiceFlow.step = 'confirm';
+      vcAddAssistantReply(pautangConfirmMessage(voiceFlow.data), 'Confirm');
+    } else {
+      voiceFlow.step = 'term';
+      vcAddAssistantReply(PAUTANG_FLOW_QUESTIONS.term);
+    }
+    autoListenNext();
+  } else if(step === 'term'){
+    const amt = extractVoiceAmount(value);
+    const term = amt ? Math.round(amt.value) : 1;
+    voiceFlow.data.term = term > 0 ? term : 1;
+    if(voiceFlow.correcting){
+      voiceFlow.correcting = false;
+      voiceFlow.step = 'confirm';
+      vcAddAssistantReply(pautangConfirmMessage(voiceFlow.data), 'Confirm');
+    } else {
+      voiceFlow.step = 'notes';
+      vcAddAssistantReply(PAUTANG_FLOW_QUESTIONS.notes);
+    }
+    autoListenNext();
+  } else if(step === 'notes'){
+    voiceFlow.data.notes = skip ? '' : value;
+    voiceFlow.correcting = false;
+    voiceFlow.step = 'confirm';
+    vcAddAssistantReply(pautangConfirmMessage(voiceFlow.data), 'Confirm');
+    autoListenNext();
+  } else if(step === 'confirm'){
+    const mentionsField = /\b(borrower|principal|amount|interest|rate|term|months?|notes)\b/i.test(lower);
+
+    if(!mentionsField && /\b(yes|yep|yeah|yup|oo|opo|tama|correct|confirmed?|save|go ahead)\b/i.test(lower)){
+      await finishPautangFlow();
+      return;
+    }
+    if(/\bborrower\b/i.test(lower)){
+      voiceFlow.step = 'borrower';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply("Okay — who's the correct borrower?");
+      autoListenNext();
+      return;
+    }
+    if(/\b(principal|amount)\b/i.test(lower)){
+      voiceFlow.step = 'principal';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply("Okay — what's the correct principal amount?");
+      autoListenNext();
+      return;
+    }
+    if(/\brate\b/i.test(lower)){
+      voiceFlow.step = 'rate';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply("Okay — what's the correct interest rate?");
+      autoListenNext();
+      return;
+    }
+    if(/\binterest\b/i.test(lower)){
+      voiceFlow.step = 'interest';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply(PAUTANG_FLOW_QUESTIONS.interest);
+      autoListenNext();
+      return;
+    }
+    if(/\b(term|months?)\b/i.test(lower)){
+      voiceFlow.step = 'term';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply('Okay — how many months should the term be?');
+      autoListenNext();
+      return;
+    }
+    if(/\bnotes\b/i.test(lower)){
+      voiceFlow.step = 'notes';
+      voiceFlow.correcting = true;
+      vcAddAssistantReply('Okay — what should the notes say?');
+      autoListenNext();
+      return;
+    }
+    if(/\b(no|nope|hindi|mali|wrong|edit)\b/i.test(lower)){
+      vcAddAssistantReply('No problem — what should I fix? Say "borrower", "principal", "interest", "term", or "notes".');
+      autoListenNext();
+      return;
+    }
+    vcAddAssistantReply('Sorry, didn\'t catch that — say "yes" to save, or name a field like "principal" or "term" to fix it.');
+    autoListenNext();
+  }
+}
+
+async function finishPautangFlow(){
+  const { borrowerId, borrowerName, principal, interestType, rate, term, notes } = voiceFlow.data;
+  vcAddAssistantReply(
+    `Saving pautang of ₱${peso(principal)} for <strong>${borrowerName}</strong>…`,
+    'New Pautang'
+  );
+
+  await new Promise(res => setTimeout(res, 600));
+  closeVoiceChat();
+  await openLoanModal(borrowerId);
+  document.getElementById('l-principal').value = principal.toFixed(2);
+  [...document.getElementById('l-interest-type').children].forEach(c=>{
+    c.classList.toggle('selected', c.dataset.v === interestType);
+  });
+  document.getElementById('l-rate').value = interestType === 'none' ? 0 : (rate || 0);
+  document.getElementById('l-term').value = term;
+  const due = new Date(); due.setMonth(due.getMonth() + term);
+  document.getElementById('l-due-date').value = due.toISOString().slice(0,10);
+  if(notes) document.getElementById('l-notes').value = notes;
+  await new Promise(res => setTimeout(res, 400));
+  document.getElementById('save-loan').click();
+  voiceFlow = null;
+}
+
 async function handleVoiceTranscript(transcript){
   vcFinalizeUserBubble(transcript);
   vcShowTyping();
@@ -2156,17 +2384,23 @@ async function handleVoiceTranscript(transcript){
   const intent = detectVoiceIntent(transcript);
 
   if(!intent){
-    vcAddAssistantReply('I didn\'t catch a command. Try something like "log payment to Juan 500 pesos", "new pautang for Maria 1000", or "new borrower".');
+    vcAddAssistantReply('I didn\'t catch a command. Try something like "log payment to Juan 500 pesos", "new pautang", or "new borrower".');
+    autoListenNext();
     return;
   }
   if(intent === 'borrower'){
     await startBorrowerFlow();
     return;
   }
+  if(intent === 'pautang'){
+    await startPautangFlow();
+    return;
+  }
 
   const amountInfo = extractVoiceAmount(transcript);
   if(!amountInfo){
     vcAddAssistantReply("I heard you, but couldn't catch the amount. Try again and include a number, like \"500 pesos\".");
+    autoListenNext();
     return;
   }
   const spokenName = extractVoiceName(transcript, amountInfo.raw);
@@ -2175,6 +2409,7 @@ async function handleVoiceTranscript(transcript){
 
   if(!borrower){
     vcAddAssistantReply('You don\'t have any borrowers yet — add one first, then try voice logging again.');
+    autoListenNext();
     return;
   }
   if(score < 0.35){
@@ -2190,6 +2425,7 @@ async function handleVoiceTranscript(transcript){
     }
     if(openLoans.length === 0){
       vcAddAssistantReply(`${borrower.name} has no active loan to pay right now.`);
+      autoListenNext();
       return;
     }
     openLoans.sort((a,b)=> (a.dueDate||'').localeCompare(b.dueDate||''));
@@ -2198,12 +2434,6 @@ async function handleVoiceTranscript(transcript){
     closeVoiceChat();
     await openPaymentModal(openLoans[0].id);
     document.getElementById('p-amount').value = amountInfo.value.toFixed(2);
-  } else if(intent === 'loan'){
-    vcAddAssistantReply(`Got it — new pautang of ₱${peso(amountInfo.value)} for ${borrower.name}. Opening the form so you can confirm.`, 'New Loan');
-    await new Promise(res => setTimeout(res, 700));
-    closeVoiceChat();
-    await openLoanModal(borrower.id);
-    document.getElementById('l-principal').value = amountInfo.value.toFixed(2);
   }
 }
 
@@ -2213,7 +2443,7 @@ let isListening = false;
 let finalTranscript = '';
 let silenceTimer = null;
 let maxListenTimer = null;
-const SILENCE_TIMEOUT_MS = 2500; // how long to wait after the user stops talking before ending
+const SILENCE_TIMEOUT_MS = 5000; // how long to wait after the user stops talking before ending
 const MAX_LISTEN_MS = 20000;     // hard cap so the mic can never get stuck open
 const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
 
