@@ -2262,6 +2262,7 @@ function openVoiceChat(){
 
 function closeVoiceChat(){
   document.getElementById('voice-chat-overlay').classList.remove('show');
+  intentionalStop = true;
   if(isListening) recognition.stop();
   voiceFlow = null;
 }
@@ -2930,8 +2931,12 @@ let isListening = false;
 let finalTranscript = '';
 let silenceTimer = null;
 let maxListenTimer = null;
-const SILENCE_TIMEOUT_MS = 5000; // how long to wait after the user stops talking before ending
-const MAX_LISTEN_MS = 20000;     // hard cap so the mic can never get stuck open
+let intentionalStop = false;
+let hadSpeechThisTurn = false;
+let silentRestartCount = 0;
+let turnDeadline = 0; // absolute timestamp — survives auto-restarts, unlike a per-session timer
+const SILENCE_TIMEOUT_MS = 8000; // how long to wait after the user stops talking before ending
+const MAX_LISTEN_MS = 30000;     // hard cap so the mic can never get stuck open
 const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 function clearListenTimers(){
@@ -2942,6 +2947,7 @@ function clearListenTimers(){
 function resetSilenceTimer(){
   if(silenceTimer) clearTimeout(silenceTimer);
   silenceTimer = setTimeout(()=>{
+    intentionalStop = true;
     if(isListening) recognition.stop();
   }, SILENCE_TIMEOUT_MS);
 }
@@ -2966,13 +2972,17 @@ function setupVoiceRecognition(){
 
   recognition.onstart = ()=>{
     isListening = true;
-    finalTranscript = '';
+    intentionalStop = false;
     micBtn.classList.add('listening');
     chatMicBtn.classList.add('listening');
     hint.textContent = 'Listening…';
     vcInterimEl = null;
     resetSilenceTimer();
-    maxListenTimer = setTimeout(()=>{ if(isListening) recognition.stop(); }, MAX_LISTEN_MS);
+    const remaining = Math.max(1000, turnDeadline - Date.now());
+    maxListenTimer = setTimeout(()=>{
+      intentionalStop = true;
+      if(isListening) recognition.stop();
+    }, remaining);
   };
   recognition.onresult = (e)=>{
     let interim = '';
@@ -2981,6 +2991,7 @@ function setupVoiceRecognition(){
       if(e.results[i].isFinal) finalTranscript += chunk + ' ';
       else interim += chunk;
     }
+    if((finalTranscript + interim).trim()) hadSpeechThisTurn = true;
     vcAddUserInterim((finalTranscript + interim).trim());
     resetSilenceTimer(); // still talking — push the auto-stop deadline back
   };
@@ -2994,16 +3005,44 @@ function setupVoiceRecognition(){
   recognition.onend = ()=>{
     clearListenTimers();
     isListening = false;
+    const panelOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
+    const withinDeadline = Date.now() < turnDeadline;
+    // Only keep resuming indefinitely once real speech has been heard —
+    // that's a genuine mid-sentence pause. If there's been dead silence
+    // from the very start, give it a couple of grace restarts (in case
+    // the mic just hadn't picked anything up yet) then give up cleanly
+    // instead of leaving the mic "stuck" listening forever.
+    const shouldResume = !intentionalStop && panelOpen && withinDeadline
+      && (hadSpeechThisTurn || silentRestartCount < 2);
+    if(shouldResume){
+      if(!hadSpeechThisTurn) silentRestartCount++;
+      // The browser's own speech engine ended the session early (common on
+      // mobile Chrome, often after just ~2s of silence) even though our
+      // own pause tolerance (SILENCE_TIMEOUT_MS) hasn't elapsed yet.
+      // Seamlessly resume listening instead of treating this as the end
+      // of the user's turn — finalTranscript is preserved across this.
+      setTimeout(()=>{
+        try{ recognition.start(); }
+        catch(err){ finishListeningTurn(panelOpen); }
+      }, 250);
+      return;
+    }
+    finishListeningTurn(panelOpen);
+  };
+  function finishListeningTurn(panelOpen){
     micBtn.classList.remove('listening');
     chatMicBtn.classList.remove('listening');
     hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
     const transcript = finalTranscript.trim();
-    const panelOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
     if(transcript && panelOpen) handleVoiceTranscript(transcript);
-  };
+  }
 
   const startListening = ()=>{
-    if(isListening){ recognition.stop(); return; }
+    if(isListening){ intentionalStop = true; recognition.stop(); return; }
+    finalTranscript = '';
+    hadSpeechThisTurn = false;
+    silentRestartCount = 0;
+    turnDeadline = Date.now() + MAX_LISTEN_MS;
     try{ recognition.start(); }catch(err){ /* already started */ }
   };
 
