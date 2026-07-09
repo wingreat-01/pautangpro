@@ -2291,8 +2291,8 @@ function setupVoiceRecognition(){
   };
 
   micBtn.addEventListener('click', ()=>{
-    startListening();
     openVoiceChat();
+    startListening();
   });
   chatMicBtn.addEventListener('click', startListening);
   closeBtn.addEventListener('click', closeVoiceChat);
