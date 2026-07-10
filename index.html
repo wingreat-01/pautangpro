@@ -143,6 +143,14 @@ a{color:inherit;}
 .pin-key:active{ background:#31423E; }
 .pin-key.wide{ grid-column:span 1; font-size:15px; color:#9FB0AC; }
 .pin-pad.locked{ opacity:0.4; pointer-events:none; }
+.pin-biometric-btn{
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  width:100%; margin-top:16px; padding:12px 0; border-radius:8px;
+  border:1px solid #33443F; background:transparent; color:#D7DEDC;
+  font-size:14px; font-family:inherit; cursor:pointer;
+}
+.pin-biometric-btn:active{ background:#26343A; }
+.pin-biometric-btn:disabled{ opacity:0.5; pointer-events:none; }
 #pin-error{
   color:#E39A8F; font-size:14.5px; min-height:18px; margin-top:10px;
 }
@@ -538,6 +546,73 @@ a{color:inherit;}
 .vc-mic-btn:active{ background:var(--peso-dark); }
 .vc-mic-btn.listening{ background:var(--red); animation:mic-pulse 1.3s infinite; }
 .vc-hint{ font-size:13px; color:var(--ink-soft); }
+
+/* ---------- Upgrade to Pro ---------- */
+.upgrade-hero{ text-align:center; padding-top:8px; }
+.upgrade-badge{
+  display:inline-block; background:var(--gold); color:#fff; font-weight:700;
+  font-size:11.5px; letter-spacing:1px; padding:4px 12px; border-radius:20px;
+}
+.upgrade-title{ font-size:24px; margin-top:12px; color:var(--ink); }
+.upgrade-sub{ font-size:14.5px; color:var(--ink-soft); margin-top:6px; line-height:1.5; }
+.upgrade-status-banner{
+  margin:16px 20px 0; padding:12px 14px; border-radius:8px;
+  background:var(--peso-tint); color:var(--peso-dark); font-size:14px; font-weight:600;
+  text-align:center;
+}
+.plan-toggle{
+  display:flex; gap:10px; margin-top:20px;
+}
+.plan-toggle-btn{
+  flex:1; padding:12px 8px; border-radius:10px; border:1.5px solid var(--line);
+  background:var(--card); color:var(--ink-soft); font-family:inherit; font-size:14.5px;
+  font-weight:600; cursor:pointer; position:relative;
+}
+.plan-toggle-btn.selected{
+  border-color:var(--gold); color:var(--ink); background:#FBF3DE;
+}
+.save-tag{
+  display:inline-block; background:var(--gold); color:#fff; font-size:11px; font-weight:700;
+  padding:2px 7px; border-radius:10px; margin-left:5px; vertical-align:1px;
+}
+.plan-price-card{
+  text-align:center; margin-top:18px; padding:18px; background:var(--card);
+  border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow);
+}
+.plan-price{ font-family:'IBM Plex Mono',monospace; font-size:32px; font-weight:700; color:var(--ink); }
+.plan-price-period{ font-size:15px; font-weight:500; color:var(--ink-soft); }
+.plan-price-note{ font-size:13px; color:var(--ink-soft); margin-top:4px; }
+.compare-grid{ display:flex; gap:12px; margin-top:22px; }
+.compare-col{
+  flex:1; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 14px;
+}
+.compare-col.pro-col{ border-color:var(--gold); background:#FFFCF4; }
+.compare-head{ font-weight:700; font-size:15px; margin-bottom:10px; }
+.compare-col.pro-col .compare-head{ color:var(--gold); }
+.compare-list{ list-style:none; margin:0; padding:0; }
+.compare-list li{
+  font-size:13px; line-height:1.5; margin-bottom:8px; padding-left:20px; position:relative; color:var(--ink);
+}
+.compare-list li::before{ content:'✓'; position:absolute; left:0; color:var(--peso); font-weight:700; }
+.compare-list li.muted{ color:var(--ink-soft); opacity:0.6; }
+.compare-list li.muted::before{ content:'✕'; color:var(--ink-soft); }
+.upgrade-cta-wrap{ margin-top:24px; padding-bottom:28px; text-align:center; }
+.upgrade-fine-print{ font-size:12.5px; color:var(--ink-soft); margin-top:10px; }
+.upgrade-link-btn{
+  display:inline-block; margin-top:14px; background:none; border:none; color:var(--peso);
+  font-family:inherit; font-size:13.5px; font-weight:600; text-decoration:underline; cursor:pointer;
+}
+
+.sig-pad-locked{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  height:150px; border:1px dashed var(--line); border-radius:8px; background:var(--card);
+  text-align:center; padding:14px;
+}
+.sig-pad-locked .lock-line{ font-size:13.5px; color:var(--ink-soft); }
+.sig-pad-locked button{
+  background:none; border:none; color:var(--peso); font-family:inherit; font-size:13.5px;
+  font-weight:700; text-decoration:underline; cursor:pointer; padding:0;
+}
 </style>
 </head>
 <body>
@@ -567,6 +642,17 @@ a{color:inherit;}
         <div class="pin-key" data-k="0">0</div>
         <div class="pin-key wide" data-k="back">⌫</div>
       </div>
+      <button type="button" id="pin-biometric-btn" class="pin-biometric-btn" style="display:none;">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 12C2 6.5 6.5 2 12 2a10 10 0 0 1 8 4"></path>
+          <path d="M5 19.5C7.5 18 10 15 10 12a2 2 0 0 1 4 0"></path>
+          <path d="M17.29 21a17.4 17.4 0 0 0 3.71-11 6 6 0 0 0-9.8-4.7"></path>
+          <path d="M8 14a5 5 0 0 1 5-5"></path>
+          <path d="M4.34 16.5a11 11 0 0 1-.94-5.5c0-.28.02-.55.05-.82"></path>
+          <path d="M13.5 5.5C15.2 5.5 17 6.9 17 9.5c0 2-1 4.5-2 6.5"></path>
+        </svg>
+        <span>Use Fingerprint / Face Unlock</span>
+      </button>
       <div id="pin-error"></div>
       <div id="pin-mode-label"></div>
     </div>
@@ -663,11 +749,22 @@ a{color:inherit;}
 
     <!-- SETTINGS -->
     <div class="view" id="view-settings">
-      <div class="section-label screen" style="margin-top:18px;">Security</div>
+      <div class="section-label screen" style="margin-top:18px;">Pautang Pro</div>
+      <div class="screen">
+        <div class="settings-item" id="settings-upgrade-pro">
+          <div><div class="l" id="plan-status-label">Free Plan</div><div class="d" id="plan-status-desc">Unlock cloud sync, exports, signatures & voice logging</div></div>
+          <div class="chev">›</div>
+        </div>
+      </div>
+      <div class="section-label screen">Security</div>
       <div class="screen">
         <div class="settings-item" id="settings-change-pin">
           <div><div class="l">Change PIN</div><div class="d">Update your 4-digit lock code</div></div>
           <div class="chev">›</div>
+        </div>
+        <div class="settings-item" id="settings-biometric-toggle" style="display:none;">
+          <div><div class="l">Biometric Unlock</div><div class="d" id="biometric-desc">Use your fingerprint or face instead of your PIN</div></div>
+          <div class="chev" id="biometric-toggle-state">Off ›</div>
         </div>
       </div>
       <div class="section-label screen">Reminders</div>
@@ -711,6 +808,67 @@ a{color:inherit;}
       <div class="section-label screen">About</div>
       <div class="screen" style="margin:0 20px; font-size:14px; color:var(--ink-soft); line-height:1.6;">
         Pautang Pro v1.0 — your ledger stays on this device by default. No account, no internet required. Sign in under Cloud Sync to back up and sync across devices.
+      </div>
+    </div>
+
+    <!-- UPGRADE TO PRO -->
+    <div class="view" id="view-upgrade">
+      <div class="back-link screen" id="back-from-upgrade">← Back</div>
+
+      <div class="screen upgrade-hero">
+        <div class="upgrade-badge">PAUTANG PRO</div>
+        <div class="upgrade-title serif">Never lose a ledger again</div>
+        <div class="upgrade-sub" id="upgrade-reason-text">Unlock cloud backup, exports, signatures &amp; voice logging.</div>
+      </div>
+
+      <div class="screen upgrade-status-banner" id="upgrade-status-banner" style="display:none;"></div>
+
+      <div class="screen plan-toggle" id="plan-toggle">
+        <button type="button" class="plan-toggle-btn" data-plan="monthly">
+          Monthly
+        </button>
+        <button type="button" class="plan-toggle-btn selected" data-plan="yearly">
+          Yearly <span class="save-tag">Save 33%</span>
+        </button>
+      </div>
+
+      <div class="screen plan-price-card">
+        <div class="plan-price" id="plan-price-amount">₱799<span class="plan-price-period">/year</span></div>
+        <div class="plan-price-note" id="plan-price-note">Just ₱66.58/month, billed yearly</div>
+      </div>
+
+      <div class="screen compare-grid">
+        <div class="compare-col">
+          <div class="compare-head">Free</div>
+          <ul class="compare-list">
+            <li>Full offline ledger</li>
+            <li>Up to 5 active borrowers</li>
+            <li>PIN + biometric lock</li>
+            <li>Due date reminders</li>
+            <li class="muted">Cloud sync/backup</li>
+            <li class="muted">PDF/Excel export</li>
+            <li class="muted">Signature capture</li>
+            <li class="muted">Voice logging</li>
+          </ul>
+        </div>
+        <div class="compare-col pro-col">
+          <div class="compare-head">Pro</div>
+          <ul class="compare-list">
+            <li>Everything in Free</li>
+            <li>Unlimited borrowers</li>
+            <li>Cloud sync across devices</li>
+            <li>PDF/Excel export</li>
+            <li>Statement PDF per borrower</li>
+            <li>Signature capture (proof-of-payment)</li>
+            <li>Voice logging</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="screen upgrade-cta-wrap">
+        <button type="button" class="btn-primary" id="upgrade-primary-btn">Start 5-Day Free Trial</button>
+        <div class="upgrade-fine-print" id="upgrade-fine-print">No charge today. Then ₱799/year — cancel anytime.</div>
+        <button type="button" class="upgrade-link-btn" id="upgrade-secondary-btn" style="display:none;"></button>
       </div>
     </div>
 
@@ -808,11 +966,15 @@ a{color:inherit;}
       </div>
       <div class="field">
         <label>Borrower's Signature <span class="sig-optional">(optional — proof of payment)</span></label>
-        <div class="sig-pad-wrap">
+        <div class="sig-pad-wrap" id="sig-pad-wrap">
           <canvas id="p-signature-canvas"></canvas>
           <div class="sig-pad-placeholder" id="sig-pad-placeholder">Sign here</div>
         </div>
-        <div class="sig-pad-actions">
+        <div class="sig-pad-locked" id="sig-pad-locked" style="display:none;">
+          <div class="lock-line">🔒 Signature capture is a Pro feature</div>
+          <button type="button" id="sig-pad-upgrade-link">Upgrade to Pro</button>
+        </div>
+        <div class="sig-pad-actions" id="sig-pad-actions">
           <button type="button" class="sig-clear-btn" id="sig-clear-btn">Clear</button>
         </div>
       </div>
@@ -1118,7 +1280,10 @@ function cloudAuthErrorMessage(err){
   }
 }
 
-document.getElementById('settings-cloud-sync').addEventListener('click', ()=>{
+document.getElementById('settings-cloud-sync').addEventListener('click', async ()=>{
+  // Already-signed-in users can still open this to manage/sign out even if
+  // their trial lapsed — only a brand-new sign-up is gated behind Pro.
+  if(!fbUser && !(await requireProOrUpsell('Cloud sync & backup across devices is a Pro feature.'))) return;
   document.getElementById('cloud-email').value = '';
   document.getElementById('cloud-password').value = '';
   document.getElementById('cloud-auth-error').textContent = '';
@@ -1302,7 +1467,371 @@ async function initPinScreen(){
   }
   renderPinDots();
   await applyPinLockoutState();
+  await updatePinScreenBiometricButton();
 }
+
+/* =========================================================
+   BIOMETRIC UNLOCK — an alternative to typing the PIN, using
+   the device's own fingerprint/face check (WebAuthn platform
+   authenticator: Android BiometricPrompt via Chrome, Face
+   ID/Touch ID via Safari, Windows Hello on desktop browsers).
+
+   There's no backend here to cryptographically verify the
+   signed assertion against — same trust model as the PIN
+   itself, which also lives entirely on-device. The actual
+   "does this fingerprint/face really match" check is performed
+   by the OS/authenticator hardware itself before it will even
+   hand back a result to the page, so this is a legitimate local
+   gate, just not a remotely-verifiable one.
+   ========================================================= */
+let biometricAvailable = false;
+
+function b64FromBuffer(buf){
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+function bufferFromB64(b64){
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function checkBiometricAvailability(){
+  if(!window.PublicKeyCredential || !PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable){
+    biometricAvailable = false;
+    return false;
+  }
+  try{
+    biometricAvailable = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  }catch(err){
+    biometricAvailable = false;
+  }
+  return biometricAvailable;
+}
+
+async function getBiometricSettings(){
+  const rec = await idbGet('settings','biometric');
+  return rec ? rec.value : { enabled:false, credentialId:null };
+}
+async function saveBiometricSettings(value){
+  await idbPut('settings', { key:'biometric', value });
+}
+
+async function registerBiometricCredential(){
+  const publicKey = {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { name: 'Pautang Pro' },
+    user: {
+      id: crypto.getRandomValues(new Uint8Array(16)),
+      name: 'lender',
+      displayName: 'Pautang Pro Lender'
+    },
+    pubKeyCredParams: [{ type:'public-key', alg:-7 }, { type:'public-key', alg:-257 }],
+    authenticatorSelection: { authenticatorAttachment:'platform', userVerification:'required', residentKey:'preferred' },
+    timeout: 60000,
+    attestation: 'none'
+  };
+  const credential = await navigator.credentials.create({ publicKey });
+  return b64FromBuffer(credential.rawId);
+}
+
+async function verifyBiometricUnlock(credentialIdB64){
+  const publicKey = {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    allowCredentials: [{ type:'public-key', id: bufferFromB64(credentialIdB64) }],
+    userVerification: 'required',
+    timeout: 60000
+  };
+  await navigator.credentials.get({ publicKey }); // throws if the person fails/cancels the check
+}
+
+async function updatePinScreenBiometricButton(){
+  const btn = document.getElementById('pin-biometric-btn');
+  if(!btn) return;
+  const eligibleMode = (pinMode === 'unlock' || pinMode === 'change-verify');
+  if(!eligibleMode){ btn.style.display = 'none'; return; }
+  const available = await checkBiometricAvailability();
+  const settings = await getBiometricSettings();
+  btn.style.display = (available && settings.enabled) ? 'flex' : 'none';
+}
+
+async function updateBiometricSettingsUI(){
+  const row = document.getElementById('settings-biometric-toggle');
+  const stateEl = document.getElementById('biometric-toggle-state');
+  const available = await checkBiometricAvailability();
+  if(!available){
+    row.style.display = 'none';
+    return;
+  }
+  row.style.display = 'flex';
+  const settings = await getBiometricSettings();
+  stateEl.textContent = settings.enabled ? 'On ›' : 'Off ›';
+}
+
+document.getElementById('settings-biometric-toggle').addEventListener('click', async ()=>{
+  const settings = await getBiometricSettings();
+  if(settings.enabled){
+    await saveBiometricSettings({ enabled:false, credentialId:null });
+    showToast('Biometric unlock turned off');
+    await updateBiometricSettingsUI();
+    await updatePinScreenBiometricButton();
+    return;
+  }
+  try{
+    const credentialId = await registerBiometricCredential();
+    await saveBiometricSettings({ enabled:true, credentialId });
+    showToast('Biometric unlock turned on');
+  }catch(err){
+    showToast('Could not set up biometric unlock on this device');
+  }
+  await updateBiometricSettingsUI();
+  await updatePinScreenBiometricButton();
+});
+
+document.getElementById('pin-biometric-btn').addEventListener('click', async ()=>{
+  const settings = await getBiometricSettings();
+  if(!settings.enabled || !settings.credentialId) return;
+  const btn = document.getElementById('pin-biometric-btn');
+  const errEl = document.getElementById('pin-error');
+  btn.disabled = true;
+  try{
+    await verifyBiometricUnlock(settings.credentialId);
+    errEl.textContent = '';
+    await clearPinLockoutState();
+    if(pinMode === 'change-verify'){
+      pinMode = 'change-new';
+      pinBuffer = '';
+      document.getElementById('pin-instruction').textContent = 'Enter new 4-digit PIN';
+      renderPinDots();
+      await updatePinScreenBiometricButton();
+    } else {
+      enterApp();
+    }
+  }catch(err){
+    errEl.textContent = "Biometric check failed or cancelled — use your PIN instead.";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* =========================================================
+   PAUTANG PRO — subscription entitlement & feature gating.
+
+   NOTE ON BILLING: this build doesn't yet talk to Google Play
+   Billing (that requires the TWA wrap + Play Billing Library,
+   tracked separately on the launch checklist). purchaseSubscription()
+   below is a clearly-marked placeholder that grants Pro locally so
+   the full upgrade flow, trial, and feature gates can be built and
+   tested end-to-end now — swap its body for a real Play Billing
+   purchase + acknowledgment call when that's wired up, everything
+   else (gates, UI, trial logic) stays the same.
+   ========================================================= */
+const FREE_BORROWER_CAP = 5;
+const TRIAL_DAYS = 5;
+const PRICE_MONTHLY = 99;
+const PRICE_YEARLY = 799;
+let selectedPlanType = 'yearly'; // which plan is highlighted on the upgrade screen
+
+async function getEntitlement(){
+  const rec = await idbGet('settings','entitlement');
+  return rec ? rec.value : { plan:'free', trialEndsAt:null, subscriptionType:null, hasUsedTrial:false };
+}
+async function saveEntitlement(value){
+  await idbPut('settings', { key:'entitlement', value });
+}
+
+/* Auto-downgrades an expired trial back to free. Call this before any
+   entitlement check so state never reads stale. */
+async function refreshEntitlement(){
+  const ent = await getEntitlement();
+  if(ent.plan === 'trial' && ent.trialEndsAt && Date.now() >= ent.trialEndsAt){
+    ent.plan = 'free';
+    await saveEntitlement(ent);
+  }
+  return ent;
+}
+
+async function isPro(){
+  const ent = await refreshEntitlement();
+  return ent.plan === 'pro' || ent.plan === 'trial';
+}
+
+async function startFreeTrial(){
+  const ent = await getEntitlement();
+  ent.plan = 'trial';
+  ent.trialEndsAt = Date.now() + TRIAL_DAYS*24*60*60*1000;
+  ent.hasUsedTrial = true;
+  await saveEntitlement(ent);
+}
+
+/* Placeholder for the real Google Play Billing purchase flow — see note above. */
+async function purchaseSubscription(subscriptionType){
+  const ent = await getEntitlement();
+  ent.plan = 'pro';
+  ent.subscriptionType = subscriptionType;
+  ent.trialEndsAt = null;
+  ent.hasUsedTrial = true;
+  await saveEntitlement(ent);
+}
+
+/* One-line gate: use at the top of any Pro-only action.
+   Returns true and does nothing if already Pro; otherwise opens
+   the upgrade screen with a tailored reason and returns false. */
+async function requireProOrUpsell(reasonText){
+  if(await isPro()) return true;
+  openUpgradeScreen(reasonText);
+  return false;
+}
+
+async function requireBorrowerCapacityOrUpsell(){
+  if(await isPro()) return true;
+  const count = (await idbGetAll('borrowers')).length;
+  if(count < FREE_BORROWER_CAP) return true;
+  openUpgradeScreen(`Free plan is limited to ${FREE_BORROWER_CAP} active borrowers. Upgrade to Pro for unlimited borrowers.`);
+  return false;
+}
+
+function openUpgradeScreen(reasonText){
+  document.getElementById('upgrade-reason-text').textContent =
+    reasonText || 'Unlock cloud backup, exports, signatures & voice logging.';
+  goToView('upgrade');
+  renderUpgradeScreen();
+}
+
+async function updateSettingsProRow(){
+  const ent = await refreshEntitlement();
+  const labelEl = document.getElementById('plan-status-label');
+  const descEl = document.getElementById('plan-status-desc');
+  if(ent.plan === 'pro'){
+    labelEl.textContent = 'Pro Plan';
+    descEl.textContent = ent.subscriptionType === 'monthly'
+      ? `₱${PRICE_MONTHLY}/month — manage via Google Play`
+      : `₱${PRICE_YEARLY}/year — manage via Google Play`;
+  } else if(ent.plan === 'trial'){
+    const daysLeft = Math.max(0, Math.ceil((ent.trialEndsAt - Date.now())/(24*60*60*1000)));
+    labelEl.textContent = 'Free Trial';
+    descEl.textContent = `${daysLeft} day${daysLeft===1?'':'s'} left — tap to subscribe`;
+  } else {
+    labelEl.textContent = 'Free Plan';
+    descEl.textContent = 'Unlock cloud sync, exports, signatures & voice logging';
+  }
+}
+
+function planPrice(type){ return type === 'monthly' ? PRICE_MONTHLY : PRICE_YEARLY; }
+
+async function renderUpgradeScreen(){
+  const ent = await refreshEntitlement();
+  const banner = document.getElementById('upgrade-status-banner');
+  const primaryBtn = document.getElementById('upgrade-primary-btn');
+  const secondaryBtn = document.getElementById('upgrade-secondary-btn');
+  const finePrint = document.getElementById('upgrade-fine-print');
+
+  // Price card + toggle reflect whichever plan is currently selected
+  document.querySelectorAll('.plan-toggle-btn').forEach(b=>{
+    b.classList.toggle('selected', b.dataset.plan === selectedPlanType);
+  });
+  const priceAmountEl = document.getElementById('plan-price-amount');
+  const priceNoteEl = document.getElementById('plan-price-note');
+  if(selectedPlanType === 'monthly'){
+    priceAmountEl.innerHTML = `₱${PRICE_MONTHLY}<span class="plan-price-period">/month</span>`;
+    priceNoteEl.textContent = 'Billed monthly, cancel anytime';
+  } else {
+    priceAmountEl.innerHTML = `₱${PRICE_YEARLY}<span class="plan-price-period">/year</span>`;
+    priceNoteEl.textContent = `Just ₱${(PRICE_YEARLY/12).toFixed(2)}/month, billed yearly`;
+  }
+
+  if(ent.plan === 'pro'){
+    banner.style.display = 'block';
+    banner.textContent = `✓ You're on Pro (${ent.subscriptionType === 'monthly' ? 'Monthly' : 'Yearly'}) — manage or cancel anytime via Google Play.`;
+    primaryBtn.style.display = 'none';
+    finePrint.style.display = 'none';
+    secondaryBtn.style.display = 'inline-block';
+    secondaryBtn.textContent = 'Manage Subscription';
+    secondaryBtn.onclick = ()=>{
+      window.open('https://play.google.com/store/account/subscriptions', '_blank');
+    };
+  } else if(ent.plan === 'trial'){
+    const daysLeft = Math.max(0, Math.ceil((ent.trialEndsAt - Date.now())/(24*60*60*1000)));
+    banner.style.display = 'block';
+    banner.textContent = `You're on a free trial — ${daysLeft} day${daysLeft===1?'':'s'} left.`;
+    primaryBtn.style.display = 'inline-block';
+    primaryBtn.textContent = `Subscribe Now — ${selectedPlanType === 'monthly' ? 'Monthly' : 'Yearly'} ₱${planPrice(selectedPlanType)}`;
+    primaryBtn.onclick = async ()=>{
+      await purchaseSubscription(selectedPlanType);
+      showToast('Subscribed to Pautang Pro');
+      await renderUpgradeScreen();
+      await updateSettingsProRow();
+      await updateSignaturePadGate();
+    };
+    finePrint.style.display = 'block';
+    finePrint.textContent = 'Your trial converts automatically once you subscribe.';
+    secondaryBtn.style.display = 'none';
+  } else {
+    banner.style.display = 'none';
+    if(!ent.hasUsedTrial){
+      primaryBtn.style.display = 'inline-block';
+      primaryBtn.textContent = `Start ${TRIAL_DAYS}-Day Free Trial`;
+      primaryBtn.onclick = async ()=>{
+        await startFreeTrial();
+        showToast(`Free trial started — ${TRIAL_DAYS} days of Pro, on us`);
+        await renderUpgradeScreen();
+        await updateSettingsProRow();
+        await updateSignaturePadGate();
+      };
+      finePrint.style.display = 'block';
+      finePrint.textContent = `No charge today. Then ₱${planPrice(selectedPlanType)}/${selectedPlanType === 'monthly' ? 'month' : 'year'} — cancel anytime.`;
+      secondaryBtn.style.display = 'inline-block';
+      secondaryBtn.textContent = `Skip trial, subscribe now — ₱${planPrice(selectedPlanType)}`;
+      secondaryBtn.onclick = async ()=>{
+        await purchaseSubscription(selectedPlanType);
+        showToast('Subscribed to Pautang Pro');
+        await renderUpgradeScreen();
+        await updateSettingsProRow();
+        await updateSignaturePadGate();
+      };
+    } else {
+      primaryBtn.style.display = 'inline-block';
+      primaryBtn.textContent = `Subscribe Now — ${selectedPlanType === 'monthly' ? 'Monthly' : 'Yearly'} ₱${planPrice(selectedPlanType)}`;
+      primaryBtn.onclick = async ()=>{
+        await purchaseSubscription(selectedPlanType);
+        showToast('Subscribed to Pautang Pro');
+        await renderUpgradeScreen();
+        await updateSettingsProRow();
+        await updateSignaturePadGate();
+      };
+      finePrint.style.display = 'block';
+      finePrint.textContent = 'Cancel anytime via Google Play.';
+      secondaryBtn.style.display = 'none';
+    }
+  }
+}
+
+document.querySelectorAll('.plan-toggle-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    selectedPlanType = btn.dataset.plan;
+    renderUpgradeScreen();
+  });
+});
+document.getElementById('back-from-upgrade').addEventListener('click', ()=>{
+  goToView('settings');
+  updateSettingsProRow();
+});
+document.getElementById('settings-upgrade-pro').addEventListener('click', ()=>{
+  openUpgradeScreen();
+});
+
+/* Toggles the signature pad vs. the locked upsell placeholder inside
+   the Log Payment modal, based on current entitlement. */
+async function updateSignaturePadGate(){
+  const pro = await isPro();
+  document.getElementById('sig-pad-wrap').style.display = pro ? 'block' : 'none';
+  document.getElementById('sig-pad-actions').style.display = pro ? 'flex' : 'none';
+  document.getElementById('sig-pad-locked').style.display = pro ? 'none' : 'flex';
+}
+document.getElementById('sig-pad-upgrade-link').addEventListener('click', ()=>{
+  closeModal('modal-payment');
+  openUpgradeScreen('Signature capture is a Pro feature — upgrade to add proof-of-payment signatures.');
+});
 
 function renderPinDots(){
   const dots = document.querySelectorAll('.pin-dot');
@@ -1379,6 +1908,7 @@ async function evaluatePinEntry(){
       pinBuffer='';
       renderPinDots();
       await clearPinLockoutState();
+      await updatePinScreenBiometricButton();
     } else {
       const state = await registerFailedPinAttempt();
       pinBuffer='';
@@ -1432,6 +1962,7 @@ function lockApp(){
   renderPinDots();
   document.getElementById('pin-screen').style.display='flex';
   applyPinLockoutState();
+  updatePinScreenBiometricButton();
 }
 
 async function checkAutoLock(){
@@ -1478,7 +2009,11 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
     if(btn.dataset.view==='borrowers') renderBorrowerList();
     if(btn.dataset.view==='dashboard') renderDashboard();
     if(btn.dataset.view==='reports') renderReports();
-    if(btn.dataset.view==='settings') updateRemindersUI();
+    if(btn.dataset.view==='settings'){
+      updateRemindersUI();
+      updateBiometricSettingsUI();
+      updateSettingsProRow();
+    }
   });
 });
 
@@ -1893,7 +2428,8 @@ async function renderReports(){
    ========================================================= */
 
 /* New / Edit Borrower */
-document.getElementById('qa-new-borrower').addEventListener('click', ()=>{
+document.getElementById('qa-new-borrower').addEventListener('click', async ()=>{
+  if(!(await requireBorrowerCapacityOrUpsell())) return;
   document.getElementById('borrower-modal-title').textContent = 'New Borrower';
   document.getElementById('b-name').value='';
   document.getElementById('b-contact').value='';
@@ -2003,6 +2539,7 @@ async function openPaymentModal(preselectLoanId){
   openModal('modal-payment');
   clearSignaturePad();
   requestAnimationFrame(resizeSignatureCanvas);
+  await updateSignaturePadGate();
 }
 document.getElementById('qa-log-payment').addEventListener('click', ()=>openPaymentModal(null));
 document.getElementById('cancel-payment').addEventListener('click', ()=>closeModal('modal-payment'));
@@ -2037,6 +2574,7 @@ document.getElementById('settings-change-pin').addEventListener('click', async (
   document.getElementById('bottomnav').style.display='none';
   document.getElementById('pin-screen').style.display='flex';
   await applyPinLockoutState();
+  await updatePinScreenBiometricButton();
 });
 
 document.getElementById('settings-export').addEventListener('click', async ()=>{
@@ -2314,6 +2852,7 @@ function stripCorrectionFiller(text){
 }
 
 async function startBorrowerFlow(){
+  if(!(await requireBorrowerCapacityOrUpsell())) return;
   voiceFlow = { type:'newBorrower', step:'name', data:{}, correcting:false };
   vcAddAssistantReply(BORROWER_FLOW_QUESTIONS.name, 'New Borrower');
   autoListenNext();
@@ -3046,7 +3585,8 @@ function setupVoiceRecognition(){
     try{ recognition.start(); }catch(err){ /* already started */ }
   };
 
-  micBtn.addEventListener('click', ()=>{
+  micBtn.addEventListener('click', async ()=>{
+    if(!(await requireProOrUpsell('Voice logging is a Pro feature.'))) return;
     openVoiceChat();
     startListening();
   });
@@ -3416,10 +3956,18 @@ async function exportBorrowerStatementPDF(borrowerId){
   showToast('Statement PDF downloaded');
 }
 
-document.getElementById('settings-export-excel').addEventListener('click', exportToExcel);
-document.getElementById('settings-export-pdf').addEventListener('click', exportLedgerReportPDF);
-document.getElementById('detail-export-statement').addEventListener('click', ()=>{
-  if(activeBorrowerId) exportBorrowerStatementPDF(activeBorrowerId);
+document.getElementById('settings-export-excel').addEventListener('click', async ()=>{
+  if(!(await requireProOrUpsell('Excel export is a Pro feature.'))) return;
+  exportToExcel();
+});
+document.getElementById('settings-export-pdf').addEventListener('click', async ()=>{
+  if(!(await requireProOrUpsell('PDF ledger export is a Pro feature.'))) return;
+  exportLedgerReportPDF();
+});
+document.getElementById('detail-export-statement').addEventListener('click', async ()=>{
+  if(!activeBorrowerId) return;
+  if(!(await requireProOrUpsell('Statement PDF is a Pro feature.'))) return;
+  exportBorrowerStatementPDF(activeBorrowerId);
 });
 
 /* =========================================================
