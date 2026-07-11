@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0044)file:///C:/Users/USER/Downloads/index_7.html -->
+<!-- saved from url=(0044)file:///C:/Users/USER/Downloads/index_8.html -->
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -3737,7 +3737,14 @@ function setupVoiceRecognition(){
   micBtn.style.display = 'flex';
 
   recognition = new SpeechRecognitionAPI();
-  recognition.lang = 'en-PH';
+  // NOTE: en-PH is used for speakText()'s TTS (speechSynthesis), which works
+  // fine because voice availability there is more permissive. Speech-to-text
+  // (SpeechRecognition) goes through a different backend (Google's speech
+  // service on Chrome/Android) whose supported-locale list is narrower —
+  // en-PH landing outside it can mean recognition runs, mic is "hot", but
+  // it never produces a single result. en-US is on every implementation's
+  // supported list, so it's the safe default for the actual recognition side.
+  recognition.lang = 'en-US';
   recognition.interimResults = true;
   recognition.continuous = true; // keep listening across brief pauses; we control when it ends below
   recognition.maxAlternatives = 1;
@@ -3781,6 +3788,16 @@ function setupVoiceRecognition(){
       showToast('No microphone detected on this device');
       return;
     }
+    if(e.error === 'network'){
+      hint.textContent = 'Speech service unreachable — check your connection';
+      showToast('Voice recognition needs an internet connection');
+      return;
+    }
+    if(e.error === 'language-not-supported'){
+      hint.textContent = 'Speech recognition language not supported on this device';
+      showToast('This device can\'t recognize that language');
+      return;
+    }
     hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
     if(e.error !== 'no-speech' && vcMessagesEl().children.length){
       vcAddAssistantReply("Didn't catch that — tap the mic and try again.");
@@ -3821,7 +3838,15 @@ function setupVoiceRecognition(){
     playListenStopTone();
     setAvatarState(null);
     const transcript = finalTranscript.trim();
-    if(transcript && panelOpen) handleVoiceTranscript(transcript);
+    if(transcript && panelOpen){
+      handleVoiceTranscript(transcript);
+    } else if(panelOpen && !hadSpeechThisTurn){
+      // Recognition ran end-to-end without ever detecting speech — mic and
+      // permissions are fine, so this usually means the recognizer isn't
+      // picking up usable audio (mic muted at the OS level, wrong input
+      // device selected, or too quiet/far from the mic).
+      vcAddAssistantReply("I didn't hear anything that time — check that your microphone isn't muted, then tap the mic and try again.");
+    }
   }
 
   const startListening = ()=>{
