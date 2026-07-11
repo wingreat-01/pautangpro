@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0044)file:///C:/Users/USER/Downloads/index_8.html -->
+<!-- saved from url=(0044)file:///C:/Users/USER/Downloads/index_9.html -->
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -837,6 +837,10 @@ a{color:inherit;}
         </div>
         <div class="settings-item" id="settings-export-pdf">
           <div><div class="l">Export Ledger Report (PDF)</div><div class="d">Printable summary of all borrowers &amp; balances</div></div>
+          <div class="chev">›</div>
+        </div>
+        <div class="settings-item" id="settings-install-app">
+          <div><div class="l">Install App</div><div class="d">Add Pautang Pro to your home screen</div></div>
           <div class="chev">›</div>
         </div>
         <div class="settings-item" id="settings-export">
@@ -2705,6 +2709,37 @@ function renderInstallBanner(){
     slot.innerHTML='';
   });
 }
+
+function isRunningInstalled(){
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.matchMedia('(display-mode: fullscreen)').matches
+    || window.navigator.standalone === true; // iOS home-screen launch
+}
+
+document.getElementById('settings-install-app').addEventListener('click', async ()=>{
+  if(isRunningInstalled()){
+    showToast('You\'re already using the installed app');
+    return;
+  }
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    document.getElementById('install-banner-slot').innerHTML = '';
+    return;
+  }
+  // The browser hasn't handed us a beforeinstallprompt event this session —
+  // most often because it's already been dismissed once and the browser is
+  // throttling re-prompts, or the app was previously installed and removed.
+  // Chrome's own menu re-checks installability independent of that event,
+  // so it always works as a fallback.
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if(isIOS){
+    showToast('Tap the Share icon, then "Add to Home Screen"');
+  } else {
+    showToast('Open the browser\'s ⋮ menu and tap "Install app" or "Add to Home screen"');
+  }
+});
 
 /* =========================================================
    VOICE LOGGING — on-device speech recognition + local parsing
