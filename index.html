@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0045)file:///C:/Users/USER/Downloads/index_12.html -->
+<!-- saved from url=(0045)file:///C:/Users/USER/Downloads/index_13.html -->
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -4254,15 +4254,33 @@ async function refreshAll(){
   await renderReports();
 }
 
+// Hard fallback: no matter what happens above, never leave the pin-pad
+// permanently locked. If openDB()/initPinScreen() throw or hang for any
+// reason, force it open after a few seconds so the person isn't stuck.
+function forceUnlockPinPad(){
+  if(appReady) return;
+  appReady = true;
+  if(!pinLocked) document.getElementById('pin-pad').classList.remove('locked');
+  console.warn('[init] forced pin-pad open — startup did not complete normally');
+}
+const appReadyFallback = setTimeout(forceUnlockPinPad, 4000);
+
 (async function init(){
   document.getElementById('today-label').textContent = new Date().toLocaleDateString('en-PH', { weekday:'short', month:'short', day:'numeric' });
-  db = await openDB();
-  await initPinScreen();
-  appReady = true;
-  setupVoiceRecognition();
-  await loadTtsSetting();
-  initSignaturePad();
-  initAutoLock();
+  try{
+    db = await openDB();
+    await initPinScreen();
+  }catch(err){
+    console.error('[init] db/pin screen setup failed:', err);
+  } finally {
+    clearTimeout(appReadyFallback);
+    appReady = true;
+    if(!pinLocked) document.getElementById('pin-pad').classList.remove('locked');
+  }
+  try{ setupVoiceRecognition(); }catch(err){ console.error('[init] setupVoiceRecognition failed:', err); }
+  try{ await loadTtsSetting(); }catch(err){ console.error('[init] loadTtsSetting failed:', err); }
+  try{ initSignaturePad(); }catch(err){ console.error('[init] initSignaturePad failed:', err); }
+  try{ initAutoLock(); }catch(err){ console.error('[init] initAutoLock failed:', err); }
 
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
