@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0044)file:///C:/Users/USER/Downloads/index_6.html -->
+<!-- saved from url=(0044)file:///C:/Users/USER/Downloads/index_7.html -->
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -700,7 +700,7 @@ a{color:inherit;}
 
     <div class="topbar screen">
       <div class="brand-mark">Pautang <span class="accent">Pro</span></div>
-      <div class="today" id="today-label">Sat, Jul 11</div>
+      <div class="today" id="today-label">Sun, Jul 12</div>
     </div>
 
     <!-- DASHBOARD -->
@@ -3769,8 +3769,19 @@ function setupVoiceRecognition(){
   };
   recognition.onerror = (e)=>{
     clearListenTimers();
-    hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
+    console.warn('[voice] recognition error:', e.error);
     setAvatarState(null);
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      hint.textContent = 'Mic access blocked — check your browser/site permissions';
+      showToast('Microphone permission is blocked for this app');
+      return;
+    }
+    if(e.error === 'audio-capture'){
+      hint.textContent = 'No microphone found';
+      showToast('No microphone detected on this device');
+      return;
+    }
+    hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
     if(e.error !== 'no-speech' && vcMessagesEl().children.length){
       vcAddAssistantReply("Didn't catch that — tap the mic and try again.");
     }
@@ -3821,8 +3832,22 @@ function setupVoiceRecognition(){
     turnDeadline = Date.now() + MAX_LISTEN_MS;
     playListenStartTone();
     startWaveform();
-    setAvatarState('listening');
-    try{ recognition.start(); }catch(err){ /* already started */ }
+    try{
+      recognition.start();
+      // avatar only flips to 'listening' once recognition.onstart actually
+      // confirms it started — setting it here unconditionally would show
+      // "listening" even when start() silently failed
+      setAvatarState('listening');
+    }catch(err){
+      // InvalidStateError just means it's already running — fine, ignore.
+      // Anything else means the mic genuinely never started, so surface it
+      // instead of leaving the user staring at a mic that isn't recording.
+      if(err && err.name === 'InvalidStateError') return;
+      console.warn('[voice] recognition.start() failed:', err);
+      setAvatarState(null);
+      stopWaveform();
+      showToast('Could not start the microphone — check mic permissions');
+    }
   };
 
   micBtn.addEventListener('click', async ()=>{
