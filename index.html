@@ -3732,32 +3732,23 @@ async function handleVoiceTranscript(transcript){
   }
 }
 
-/* ---------- Speech recognition wiring ---------- */
+/* ---------- Speech recognition wiring ----------
+   NOTE: continuous=false (single utterance per recognition.start() call) is
+   intentional — it's what the very first working version of this feature
+   used. A later commit switched to continuous=true plus a manual restart/
+   silence-timer system to keep sessions alive across pauses, but Android's
+   native speech engine is well documented to be unreliable specifically in
+   continuous mode: Chrome has to fake continuity by tearing down and
+   restarting the recognition session repeatedly, and on many Android/OEM
+   combinations this drops audio between restarts or produces zero results
+   with no error at all — recognition looks like it's running (mic is "hot")
+   but never actually completes a result. continuous=false leans on the
+   browser's own built-in endpointing (it ends naturally a couple seconds
+   after you stop talking) instead of us reimplementing that logic badly. */
 let recognition = null;
 let isListening = false;
-let finalTranscript = '';
-let silenceTimer = null;
-let maxListenTimer = null;
 let intentionalStop = false;
-let hadSpeechThisTurn = false;
-let silentRestartCount = 0;
-let turnDeadline = 0; // absolute timestamp — survives auto-restarts, unlike a per-session timer
-const SILENCE_TIMEOUT_MS = 8000; // how long to wait after the user stops talking before ending
-const MAX_LISTEN_MS = 30000;     // hard cap so the mic can never get stuck open
 const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-function clearListenTimers(){
-  if(silenceTimer){ clearTimeout(silenceTimer); silenceTimer = null; }
-  if(maxListenTimer){ clearTimeout(maxListenTimer); maxListenTimer = null; }
-}
-
-function resetSilenceTimer(){
-  if(silenceTimer) clearTimeout(silenceTimer);
-  silenceTimer = setTimeout(()=>{
-    intentionalStop = true;
-    if(isListening) recognition.stop();
-  }, SILENCE_TIMEOUT_MS);
-}
 
 function setupVoiceRecognition(){
   const micBtn = document.getElementById('mic-fab');
@@ -3772,16 +3763,12 @@ function setupVoiceRecognition(){
   micBtn.style.display = 'flex';
 
   recognition = new SpeechRecognitionAPI();
-  // NOTE: en-PH is used for speakText()'s TTS (speechSynthesis), which works
-  // fine because voice availability there is more permissive. Speech-to-text
-  // (SpeechRecognition) goes through a different backend (Google's speech
-  // service on Chrome/Android) whose supported-locale list is narrower —
-  // en-PH landing outside it can mean recognition runs, mic is "hot", but
-  // it never produces a single result. en-US is on every implementation's
-  // supported list, so it's the safe default for the actual recognition side.
+  // en-PH is used for speakText()'s TTS (speechSynthesis) and works fine there
+  // because voice availability is permissive. Speech-to-text goes through a
+  // narrower supported-locale list, so en-US is the safe choice here.
   recognition.lang = 'en-US';
   recognition.interimResults = true;
-  recognition.continuous = true; // keep listening across brief pauses; we control when it ends below
+  recognition.continuous = false;
   recognition.maxAlternatives = 1;
 
   recognition.onstart = ()=>{
@@ -3791,26 +3778,19 @@ function setupVoiceRecognition(){
     chatMicBtn.classList.add('listening');
     hint.textContent = 'Listening…';
     vcInterimEl = null;
-    resetSilenceTimer();
-    const remaining = Math.max(1000, turnDeadline - Date.now());
-    maxListenTimer = setTimeout(()=>{
-      intentionalStop = true;
-      if(isListening) recognition.stop();
-    }, remaining);
   };
   recognition.onresult = (e)=>{
-    let interim = '';
-    for(let i=e.resultIndex; i<e.results.length; i++){
-      const chunk = e.results[i][0].transcript;
-      if(e.results[i].isFinal) finalTranscript += chunk + ' ';
-      else interim += chunk;
+    let transcript = '';
+    for(let i=0; i<e.results.length; i++){
+      transcript += e.results[i][0].transcript;
     }
-    if((finalTranscript + interim).trim()) hadSpeechThisTurn = true;
-    vcAddUserInterim((finalTranscript + interim).trim());
-    resetSilenceTimer(); // still talking — push the auto-stop deadline back
+    vcAddUserInterim(transcript);
+    if(e.results[e.results.length-1].isFinal){
+      const panelOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
+      if(transcript.trim() && panelOpen) handleVoiceTranscript(transcript.trim());
+    }
   };
   recognition.onerror = (e)=>{
-    clearListenTimers();
     console.warn('[voice] recognition error:', e.error);
     setAvatarState(null);
     if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
@@ -3834,72 +3814,24 @@ function setupVoiceRecognition(){
       return;
     }
     hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
-    if(e.error !== 'no-speech' && vcMessagesEl().children.length){
+    if(e.error === 'no-speech' && vcMessagesEl().children.length){
+      vcAddAssistantReply("I didn't hear anything that time — check that your microphone isn't muted, then tap the mic and try again.");
+    } else if(e.error !== 'no-speech' && vcMessagesEl().children.length){
       vcAddAssistantReply("Didn't catch that — tap the mic and try again.");
     }
   };
   recognition.onend = ()=>{
-    clearListenTimers();
     isListening = false;
-    const panelOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
-    const withinDeadline = Date.now() < turnDeadline;
-    // Only keep resuming indefinitely once real speech has been heard —
-    // that's a genuine mid-sentence pause. If there's been dead silence
-    // from the very start, give it a couple of grace restarts (in case
-    // the mic just hadn't picked anything up yet) then give up cleanly
-    // instead of leaving the mic "stuck" listening forever.
-    const shouldResume = !intentionalStop && panelOpen && withinDeadline
-      && (hadSpeechThisTurn || silentRestartCount < 2);
-    if(shouldResume){
-      if(!hadSpeechThisTurn) silentRestartCount++;
-      // The browser's own speech engine ended the session early (common on
-      // mobile Chrome, often after just ~2s of silence) even though our
-      // own pause tolerance (SILENCE_TIMEOUT_MS) hasn't elapsed yet.
-      // Seamlessly resume listening instead of treating this as the end
-      // of the user's turn — finalTranscript is preserved across this.
-      setTimeout(()=>{
-        try{ recognition.start(); }
-        catch(err){ finishListeningTurn(panelOpen); }
-      }, 250);
-      return;
-    }
-    finishListeningTurn(panelOpen);
-  };
-  function finishListeningTurn(panelOpen){
     micBtn.classList.remove('listening');
     chatMicBtn.classList.remove('listening');
     hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
-    stopWaveform();
     playListenStopTone();
     setAvatarState(null);
-    const transcript = finalTranscript.trim();
-    if(transcript && panelOpen){
-      handleVoiceTranscript(transcript);
-    } else if(panelOpen && !hadSpeechThisTurn){
-      // Recognition ran end-to-end without ever detecting speech — mic and
-      // permissions are fine, so this usually means the recognizer isn't
-      // picking up usable audio (mic muted at the OS level, wrong input
-      // device selected, or too quiet/far from the mic).
-      vcAddAssistantReply("I didn't hear anything that time — check that your microphone isn't muted, then tap the mic and try again.");
-    }
-  }
+  };
 
   const startListening = ()=>{
     if(isListening){ intentionalStop = true; recognition.stop(); return; }
-    finalTranscript = '';
-    hadSpeechThisTurn = false;
-    silentRestartCount = 0;
-    turnDeadline = Date.now() + MAX_LISTEN_MS;
     playListenStartTone();
-    // NOTE: startWaveform() (a second, separate getUserMedia audio stream
-    // purely for the waveform bars) is intentionally NOT called here anymore.
-    // It ran concurrently with SpeechRecognition's own internal mic capture,
-    // and installed/standalone PWAs on Android are stricter about concurrent
-    // audio sessions than a regular browser tab — this second stream can
-    // starve or mute what SpeechRecognition actually receives, so recognition
-    // looks like it's listening but never gets usable audio. The waveform is
-    // cosmetic only, so it's not worth the risk. Re-enable with startWaveform()
-    // below if you confirm it's not the cause and want the bars back.
     try{
       recognition.start();
       // avatar only flips to 'listening' once recognition.onstart actually
@@ -3913,7 +3845,6 @@ function setupVoiceRecognition(){
       if(err && err.name === 'InvalidStateError') return;
       console.warn('[voice] recognition.start() failed:', err);
       setAvatarState(null);
-      stopWaveform();
       showToast('Could not start the microphone — check mic permissions');
     }
   };
