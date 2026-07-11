@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pautang-pro-v4';
+const CACHE_NAME = 'pautang-pro-v5'; // bumped to force update — cache-first fetch strategy below means the installed app keeps serving whatever was cached under the old name forever, otherwise
 const ASSETS = [
   './',
   './index.html',
