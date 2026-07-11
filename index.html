@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0045)file:///C:/Users/USER/Downloads/index_13.html -->
+<!-- saved from url=(0045)file:///C:/Users/USER/Downloads/index_14.html -->
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -3755,11 +3755,31 @@ async function handleVoiceTranscript(transcript){
    with no error at all — recognition looks like it's running (mic is "hot")
    but never actually completes a result. continuous=false leans on the
    browser's own built-in endpointing (it ends naturally a couple seconds
-   after you stop talking) instead of us reimplementing that logic badly. */
+   after you stop talking) instead of us reimplementing that logic badly.
+
+   We DO still restart manually below (see onend), but only as a thin
+   bridge across the browser's own premature cutoff, not as a replacement
+   continuity mechanism: each restart is a fresh continuous=false session,
+   same as a manual tap would create, so the Android reliability concerns
+   above don't apply the way they would for continuous=true. */
 let recognition = null;
 let isListening = false;
 let intentionalStop = false;
 const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+/* The browser's own native endpointing (continuous=false) decides on its
+   own when a "pause" means the person is done talking — on Android Chrome
+   this is roughly 1-2 seconds, which cuts people off mid-thought. There's
+   no API knob to configure that delay directly, so instead we bridge across
+   it: when a session ends early but the person only just paused (less than
+   VOICE_SILENCE_TOLERANCE_MS since their last bit of speech), we silently
+   restart recognition and keep accumulating into the same logical turn.
+   Only once real silence reaches the tolerance (or the person taps the mic
+   to stop manually) do we treat the turn as finished and submit it. */
+const VOICE_SILENCE_TOLERANCE_MS = 5000;
+let vcSessionBaseTranscript = ''; // finalized text carried over across bridge restarts, within one turn
+let vcLastSpeechAt = 0;
+let vcBridging = false; // true only for our own internal restart, not a fresh user-initiated tap
 
 function setupVoiceRecognition(){
   const micBtn = document.getElementById('mic-fab');
@@ -3788,17 +3808,23 @@ function setupVoiceRecognition(){
     micBtn.classList.add('listening');
     chatMicBtn.classList.add('listening');
     hint.textContent = 'Listening…';
-    vcInterimEl = null;
+    if(!vcBridging){
+      vcInterimEl = null;
+      vcSessionBaseTranscript = '';
+      vcLastSpeechAt = 0;
+    }
+    vcBridging = false;
   };
   recognition.onresult = (e)=>{
     let transcript = '';
     for(let i=0; i<e.results.length; i++){
       transcript += e.results[i][0].transcript;
     }
-    vcAddUserInterim(transcript);
+    vcLastSpeechAt = Date.now();
+    const combined = ((vcSessionBaseTranscript ? vcSessionBaseTranscript + ' ' : '') + transcript).trim();
+    vcAddUserInterim(combined);
     if(e.results[e.results.length-1].isFinal){
-      const panelOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
-      if(transcript.trim() && panelOpen) handleVoiceTranscript(transcript.trim());
+      vcSessionBaseTranscript = combined;
     }
   };
   recognition.onerror = (e)=>{
@@ -3825,19 +3851,35 @@ function setupVoiceRecognition(){
       return;
     }
     hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
-    if(e.error === 'no-speech' && vcMessagesEl().children.length){
+    if(e.error === 'no-speech' && vcMessagesEl().children.length && !vcSessionBaseTranscript){
       vcAddAssistantReply("I didn't hear anything that time — check that your microphone isn't muted, then tap the mic and try again.");
     } else if(e.error !== 'no-speech' && vcMessagesEl().children.length){
       vcAddAssistantReply("Didn't catch that — tap the mic and try again.");
     }
   };
   recognition.onend = ()=>{
+    const panelOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
+    const elapsedSinceSpeech = vcLastSpeechAt ? (Date.now() - vcLastSpeechAt) : Infinity;
+    if(!intentionalStop && panelOpen && elapsedSinceSpeech < VOICE_SILENCE_TOLERANCE_MS){
+      // Only a natural pause, not real silence yet — bridge the gap instead
+      // of letting the browser's own cutoff end the turn.
+      vcBridging = true;
+      try{
+        recognition.start();
+        return;
+      }catch(err){
+        vcBridging = false; // couldn't restart — fall through and finalize below
+      }
+    }
     isListening = false;
     micBtn.classList.remove('listening');
     chatMicBtn.classList.remove('listening');
     hint.textContent = 'Tap the mic and say a command, e.g. "log payment"';
     playListenStopTone();
     setAvatarState(null);
+    const finalText = vcSessionBaseTranscript.trim();
+    vcSessionBaseTranscript = '';
+    if(finalText && panelOpen) handleVoiceTranscript(finalText);
   };
 
   const startListening = ()=>{
