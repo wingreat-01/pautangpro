@@ -1,22 +1,22 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
+<!-- saved from url=(0045)file:///C:/Users/USER/Downloads/index_11.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#1E2A2E">
 <title>Pautang Pro</title>
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
-<link rel="icon" href="icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="vendor/xlsx.full.min.js"></script>
-<script src="vendor/jspdf.umd.min.js"></script>
-<script src="vendor/jspdf.plugin.autotable.min.js"></script>
-<script src="vendor/firebase-app-compat.js"></script>
-<script src="vendor/firebase-auth-compat.js"></script>
-<script src="vendor/firebase-firestore-compat.js"></script>
+<link rel="manifest" href="file:///C:/Users/USER/Downloads/manifest.json">
+<link rel="apple-touch-icon" href="file:///C:/Users/USER/Downloads/icon-192.png">
+<link rel="icon" href="file:///C:/Users/USER/Downloads/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com/">
+<link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+<link href="./index_files/css2" rel="stylesheet">
+<script src="file:///C:/Users/USER/Downloads/vendor/xlsx.full.min.js"></script>
+<script src="file:///C:/Users/USER/Downloads/vendor/jspdf.umd.min.js"></script>
+<script src="file:///C:/Users/USER/Downloads/vendor/jspdf.plugin.autotable.min.js"></script>
+<script src="file:///C:/Users/USER/Downloads/vendor/firebase-app-compat.js"></script>
+<script src="file:///C:/Users/USER/Downloads/vendor/firebase-auth-compat.js"></script>
+<script src="file:///C:/Users/USER/Downloads/vendor/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --paper:#EFE9D8;
@@ -700,7 +700,7 @@ a{color:inherit;}
 
     <div class="topbar screen">
       <div class="brand-mark">Pautang <span class="accent">Pro</span></div>
-      <div class="today" id="today-label"></div>
+      <div class="today" id="today-label">Sun, Jul 12</div>
     </div>
 
     <!-- DASHBOARD -->
@@ -789,7 +789,7 @@ a{color:inherit;}
       <div class="section-label screen" style="margin-top:18px;">Pautang Pro</div>
       <div class="screen">
         <div class="settings-item" id="settings-upgrade-pro">
-          <div><div class="l" id="plan-status-label">Free Plan</div><div class="d" id="plan-status-desc">Unlock cloud sync, exports, signatures & voice logging</div></div>
+          <div><div class="l" id="plan-status-label">Free Plan</div><div class="d" id="plan-status-desc">Unlock cloud sync, exports, signatures &amp; voice logging</div></div>
           <div class="chev">›</div>
         </div>
       </div>
@@ -797,7 +797,7 @@ a{color:inherit;}
       <div class="screen">
         <div class="settings-item" id="settings-tts-toggle">
           <div><div class="l">Speak Replies</div><div class="d" id="tts-desc">Pia reads her replies out loud</div></div>
-          <div class="chev" id="tts-toggle-state">On ›</div>
+          <div class="chev" id="tts-toggle-state">Off ›</div>
         </div>
       </div>
       <div class="section-label screen">Security</div>
@@ -832,11 +832,11 @@ a{color:inherit;}
       <div class="section-label screen">Data</div>
       <div class="screen">
         <div class="settings-item" id="settings-export-excel">
-          <div><div class="l">Export to Excel</div><div class="d">All borrowers, loans & payments as .xlsx</div></div>
+          <div><div class="l">Export to Excel</div><div class="d">All borrowers, loans &amp; payments as .xlsx</div></div>
           <div class="chev">›</div>
         </div>
         <div class="settings-item" id="settings-export-pdf">
-          <div><div class="l">Export Ledger Report (PDF)</div><div class="d">Printable summary of all borrowers & balances</div></div>
+          <div><div class="l">Export Ledger Report (PDF)</div><div class="d">Printable summary of all borrowers &amp; balances</div></div>
           <div class="chev">›</div>
         </div>
         <div class="settings-item" id="settings-install-app">
@@ -929,7 +929,7 @@ a{color:inherit;}
     <button class="nav-btn" data-view="settings"><span class="ic">⚙</span><span class="lb">Settings</span></button>
   </div>
 
-  <button class="mic-fab" id="mic-fab" style="display:none;" title="Voice log">
+  <button class="mic-fab" id="mic-fab" style="display: flex;" title="Voice log">
     <span id="mic-icon">🎙</span>
     <span class="mic-eq" aria-hidden="true"><i></i><i></i><i></i></span>
   </button>
@@ -3069,27 +3069,12 @@ const BORROWER_FLOW_QUESTIONS = {
 };
 
 function autoListenNext(){
-  const openMic = ()=>{
-    const stillOpen = document.getElementById('voice-chat-overlay').classList.contains('show');
-    if(stillOpen && !isListening){
-      try{ recognition.start(); }catch(err){ /* already started */ }
-    }
-  };
-  if(vcIsSpeaking){
-    // Pia is still talking — wait for her to finish (so the mic doesn't hear
-    // her own voice) then open the mic a short beat later.
-    let waited = 0;
-    const poll = setInterval(()=>{
-      waited += 150;
-      if(!vcIsSpeaking || waited > 8000){
-        clearInterval(poll);
-        setTimeout(openMic, 350);
-      }
-    }, 150);
-  } else {
-    // give the assistant's reply a beat to be read, then auto-open the mic for the next answer
-    setTimeout(openMic, 500);
-  }
+  // Auto-reopen disabled: mic is now manual tap-to-listen only.
+  // Previously this re-opened the mic automatically after each assistant
+  // reply/turn in a guided flow. All ~40 call sites throughout the flow
+  // logic are left in place (harmless no-ops) so behavior stays a single
+  // on/off switch here rather than requiring edits scattered everywhere.
+  return;
 }
 
 function borrowerConfirmMessage(data){
@@ -4257,5 +4242,6 @@ async function refreshAll(){
   }
 })();
 </script>
-</body>
-</html>
+
+
+</body></html>
