@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0044)file:///C:/Users/USER/Downloads/index_9.html -->
+<!-- saved from url=(0045)file:///C:/Users/USER/Downloads/index_10.html -->
 <html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -797,7 +797,7 @@ a{color:inherit;}
       <div class="screen">
         <div class="settings-item" id="settings-tts-toggle">
           <div><div class="l">Speak Replies</div><div class="d" id="tts-desc">Pia reads her replies out loud</div></div>
-          <div class="chev" id="tts-toggle-state">On ›</div>
+          <div class="chev" id="tts-toggle-state">Off ›</div>
         </div>
       </div>
       <div class="section-label screen">Security</div>
@@ -2823,7 +2823,7 @@ function titleCase(str){
    All on-device: SpeechSynthesis for talk-back, WebAudio oscillators
    for the listen/stop chimes, and an AnalyserNode reading a second
    getUserMedia stream to drive the waveform bars. No network calls. */
-let ttsEnabled = true;
+let ttsEnabled = false;
 let vcIsSpeaking = false;
 let vcAudioCtx = null;
 let vcAnalyser = null;
@@ -2833,8 +2833,8 @@ let vcWaveformRAF = null;
 async function loadTtsSetting(){
   try{
     const rec = await idbGet('settings','ttsEnabled');
-    ttsEnabled = rec ? rec.value : true;
-  }catch(err){ ttsEnabled = true; }
+    ttsEnabled = rec ? rec.value : false;
+  }catch(err){ ttsEnabled = false; }
   updateTtsToggleUI();
 }
 function updateTtsToggleUI(){
@@ -3891,7 +3891,15 @@ function setupVoiceRecognition(){
     silentRestartCount = 0;
     turnDeadline = Date.now() + MAX_LISTEN_MS;
     playListenStartTone();
-    startWaveform();
+    // NOTE: startWaveform() (a second, separate getUserMedia audio stream
+    // purely for the waveform bars) is intentionally NOT called here anymore.
+    // It ran concurrently with SpeechRecognition's own internal mic capture,
+    // and installed/standalone PWAs on Android are stricter about concurrent
+    // audio sessions than a regular browser tab — this second stream can
+    // starve or mute what SpeechRecognition actually receives, so recognition
+    // looks like it's listening but never gets usable audio. The waveform is
+    // cosmetic only, so it's not worth the risk. Re-enable with startWaveform()
+    // below if you confirm it's not the cause and want the bars back.
     try{
       recognition.start();
       // avatar only flips to 'listening' once recognition.onstart actually
